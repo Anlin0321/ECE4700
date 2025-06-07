@@ -79,17 +79,18 @@ module riscv_test;
 
             repeat (8) @(posedge clk);
 
+            observed_sum = 0;
             for (int i = 0; i < 3; i++)
                 observed_sum += wb_data[i];
 
-            assign expect_sum =
+            expect_sum =
                   test_vec[tc][0] + test_vec[tc][1] +
                   test_vec[tc][2] + test_vec[tc][3] +
                   test_vec[tc][4] + test_vec[tc][5];
 
             if (observed_sum === expect_sum) begin
-                $display("[TC%0d] PASS - observed %0d (0x%08h)",
-                         tc, observed_sum, observed_sum);
+                $display("[TC%0d] PASS - observed %0d  expected %0d",
+                         tc, observed_sum, expect_sum);
                 pass_cnt++;
             end
             else begin

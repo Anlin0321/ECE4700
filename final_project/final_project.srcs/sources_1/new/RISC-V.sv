@@ -14,7 +14,8 @@ module riscv (
     output logic [31:0] wb_data[3],
     output logic [31:0] mem_req_addr[3],
     output logic [31:0] mem_req_data[3],
-    output logic        mem_req_valid[3]
+    output logic        mem_req_valid[3],
+    output logic        mem_req_is_load[3]
 );
 
     logic [31:0] pc[3];
@@ -68,7 +69,8 @@ module riscv (
             mem_req_addr[i] <= mem_alu_result[i];
             mem_req_data[i] <= mem_wdata[i];
             mem_req_valid[i] <= 1'b1;
-            wb_result[i] <= mem_resp[i];
+            mem_req_is_load[i] <= 1'b1;
+            wb_result[i] <= mem_alu_result[i];
         end
     end
 

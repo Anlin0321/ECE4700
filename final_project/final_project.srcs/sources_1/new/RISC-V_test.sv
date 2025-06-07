@@ -3,9 +3,13 @@
 module riscv_test;
 
     // Clock and reset
-    logic clk;
+    logic clk = 0;
     logic rst;
-    logic [31:0] sum;
+
+    always #5 clk = ~clk;
+    
+    logic [31:0] observed_sum;
+    logic [31:0] expect_sum;
 
     // Interface signals
     logic [31:0] instr_bus[3];
@@ -17,10 +21,7 @@ module riscv_test;
     logic [31:0] mem_req_addr[3];
     logic [31:0] mem_req_data[3];
     logic        mem_req_valid[3];
-
-    // Clock generation
-    initial clk = 0;
-    always #5 clk = ~clk;
+    logic        mem_req_is_load[3];
 
     // DUT instantiation
     riscv dut (
@@ -34,62 +35,75 @@ module riscv_test;
         .wb_data(wb_data),
         .mem_req_addr(mem_req_addr),
         .mem_req_data(mem_req_data),
-        .mem_req_valid(mem_req_valid)
+        .mem_req_valid(mem_req_valid),
+        .mem_req_is_load(mem_req_is_load)
     );
 
-    // Simple mock ADD instruction (no decoding logic, symbolic only)
-    function [31:0] make_add_instr(int rs1, int rs2, int rd);
-        return {7'b0110011, rs2[4:0], rs1[4:0], 3'b000, rd[4:0], 7'b0000000}; // ADD opcode
+    // Helper - fixed "ADD" encoding
+    function automatic [31:0] make_add_instr (int rs1, int rs2, int rd);
+        return {7'b0110011, rs2[4:0], rs1[4:0], 3'b000, rd[4:0], 7'b0000000};
     endfunction
 
-    // Expected sum calculation function (sum of expected results)
-    function automatic [31:0] expected_sum();
-        // For your test input:
-        // r10 = r0 + r1 = 10 + 20 = 30
-        // r11 = r2 + r3 = 30 + 40 = 70
-        // r12 = r4 + r5 = 50 + 60 = 110
-        return 32'd30 + 32'd70 + 32'd110; // = 210
-    endfunction
+    // Fixed 3-wide instruction window
+    initial begin
+        instr_bus[0] = make_add_instr(0, 1, 10); // r10 = r0 + r1
+        instr_bus[1] = make_add_instr(2, 3, 11); // r11 = r2 + r3
+        instr_bus[2] = make_add_instr(4, 5, 12); // r12 = r4 + r5
+    end
+
+    typedef int unsigned rv6_t [6];
+    localparam int NUM_TESTS = 5;
+
+    const rv6_t test_vec[NUM_TESTS] = '{
+        '{ 10, 20,   30,  40,     50,   60 },
+        '{  1,  2,    3,   4,      5,    6 },
+        '{100,200,  300, 400,    500,  600 },
+        '{  0,  0,    0,   0,      0,    0 },
+        '{32'hFFFF_FFFF, 32'd1, 32'h8000_0000,
+          32'h8000_0000, 32'd1234567890,
+          32'd987654321 }
+    };
+
+    int pass_cnt = 0;
 
     initial begin
-        // Initial reset
-        rst = 1;
-        instr_bus = '{default: 32'h00000013};  // NOP
-        mem_resp = '{default: 32'h0};
-        reg_rdata = '{default: 32'h0};
+        mem_resp = '{default:32'd0};
 
-        #15 rst = 0;
+        for (int tc = 0; tc < NUM_TESTS; tc++) begin
+            rst = 1;
+            #15;
+            rst = 0;
 
-        // Set register read values
-        reg_rdata[0] = 32'd10; // r0
-        reg_rdata[1] = 32'd20; // r1
-        reg_rdata[2] = 32'd30; // r2
-        reg_rdata[3] = 32'd40; // r3
-        reg_rdata[4] = 32'd50; // r4
-        reg_rdata[5] = 32'd60; // r5
+            for (int i = 0; i < 6; i++)
+                reg_rdata[i] = test_vec[tc][i];
 
-        // Assign mock ADD instructions to instr_bus
-        instr_bus[0] = make_add_instr(0, 1, 10);  // r10 = r0 + r1
-        instr_bus[1] = make_add_instr(2, 3, 11);  // r11 = r2 + r3
-        instr_bus[2] = make_add_instr(4, 5, 12);  // r12 = r4 + r5
+            repeat (8) @(posedge clk);
 
-        // Wait some cycles for the pipeline to process
-        repeat (10) begin
-            #10;
+            for (int i = 0; i < 3; i++)
+                observed_sum += wb_data[i];
 
-            // Calculate sum of wb_data outputs this cycle
-            sum = 32'd0;
-            for (int i = 0; i < 3; i++) begin
-                sum += wb_data[i];
+            assign expect_sum =
+                  test_vec[tc][0] + test_vec[tc][1] +
+                  test_vec[tc][2] + test_vec[tc][3] +
+                  test_vec[tc][4] + test_vec[tc][5];
+
+            if (observed_sum === expect_sum) begin
+                $display("[TC%0d] PASS - observed %0d (0x%08h)",
+                         tc, observed_sum, observed_sum);
+                pass_cnt++;
+            end
+            else begin
+                $display("[TC%0d] *** FAIL ***  observed %0d  expected %0d",
+                         tc, observed_sum, expect_sum);
             end
 
-            // Compare to expected sum
-            if (sum == expected_sum()) begin
-                $display("Cycle %0t: PASS! wb_data sum = %0d", $time, sum);
-            end else begin
-                $display("Cycle %0t: FAIL! wb_data sum = %0d, expected %0d", $time, sum, expected_sum());
-            end
+            #20;
         end
+
+        if (pass_cnt == NUM_TESTS)
+            $display("ALL %0d TESTS PASSED", NUM_TESTS);
+        else
+            $display("%0d / %0d TESTS PASSED", pass_cnt, NUM_TESTS);
 
         $finish;
     end

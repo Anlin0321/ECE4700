@@ -1,26 +1,28 @@
 module branch_predictor (
     input wire clk,
     input wire reset,
-    input wire [31:0] pc,          // å½“å‰æŒ‡ä»¤PC
-    input wire branch_taken,       // å®é™…åˆ†æ”¯ç»“æœï¼ˆæ¥è‡ªEXé˜¶æ®µï¼‰
-    input wire is_branch,          // å½“å‰æŒ‡ä»¤æ˜¯å¦æ˜¯åˆ†æ”¯
-    output wire prediction,        // é¢„æµ‹æ–¹å‘ï¼ˆ1=TAKEN, 0=NOT TAKENï¼‰
-    output wire [31:0] pred_target // é¢„æµ‹ç›®æ ‡åœ°å€ï¼ˆå¯é€‰ï¼‰
+    input wire [31:0] pc,          // µ±Ç°Ö¸ÁîPC
+    input wire branch_taken,       // Êµ¼Ê·ÖÖ§½á¹û£¨À´×ÔEX½×¶Î£©
+    input wire is_branch,          // µ±Ç°Ö¸ÁîÊÇ·ñÊÇ·ÖÖ§
+    input wire [31:0] actual_target_from_ex, // À´×ÔEX½×¶ÎµÄ·ÖÖ§Ä¿±êµØÖ·
+    output wire prediction,        // Ô¤²â·½Ïò£¨1=TAKEN, 0=NOT TAKEN£©
+    output wire [31:0] pred_target // Ô¤²âÄ¿±êµØÖ·£¨¿ÉÑ¡£©
 );
 
-    // ---------- å­æ¨¡å—ä¿¡å·å£°æ˜ ----------
+    // ---------- ×ÓÄ£¿éĞÅºÅÉùÃ÷ ----------
     wire loop_prediction;
     wire tage_prediction;
     wire use_loop_pred;
 
-    // ---------- å®ä¾‹åŒ–å­æ¨¡å— ----------
+    // ---------- ÊµÀı»¯×ÓÄ£¿é ----------
     loop_predictor loop_predictor_inst (
         .clk(clk),
         .reset(reset),
         .pc(pc),
         .branch_taken(branch_taken),
         .is_branch(is_branch),
-        .prediction(loop_prediction)
+        .prediction(loop_prediction),
+        .loop_detected(use_loop_pred)  // Connected directly to use_loop_pred
     );
 
     tage_predictor tage_predictor_inst (
@@ -32,29 +34,27 @@ module branch_predictor (
         .prediction(tage_prediction)
     );
 
-    // ---------- é¢„æµ‹é€‰æ‹©é€»è¾‘ ----------
-    // ä¼˜å…ˆä½¿ç”¨Loop Predictorï¼ˆå¦‚æœæ£€æµ‹åˆ°å¾ªç¯ï¼‰
-    assign use_loop_pred = (loop_predictor_inst.loop_detected);
+    // ---------- Ô¤²âÑ¡ÔñÂß¼­ ----------
+    // ÓÅÏÈÊ¹ÓÃLoop Predictor£¨Èç¹û¼ì²âµ½Ñ­»·£©
     assign prediction = use_loop_pred ? loop_prediction : tage_prediction;
 
-    // ---------- ç›®æ ‡åœ°å€é¢„æµ‹ï¼ˆå¯é€‰ï¼‰ ----------
-    // æ­¤å¤„å¯æ·»åŠ BTBï¼ˆBranch Target Bufferï¼‰æ¨¡å—
+    // ---------- Ä¿±êµØÖ·Ô¤²â ----------
     wire btb_hit;
     wire [31:0] btb_target;
 
-    // ---------- å®ä¾‹åŒ–BTB ----------
+    // ---------- ÊµÀı»¯BTB ----------
     btb btb_inst (
         .clk(clk),
         .reset(reset),
         .pc(pc),
-        .actual_target(actual_target_from_ex), // æ¥è‡ªEXé˜¶æ®µ
+        .actual_target(actual_target_from_ex),
         .is_branch(is_branch),
         .branch_taken(branch_taken),
         .pred_target(btb_target),
         .btb_hit(btb_hit)
     );
 
-    // ---------- é¢„æµ‹ç›®æ ‡é€»è¾‘ ----------
+    // ---------- Ô¤²âÄ¿±êÂß¼­ ----------
     assign pred_target = (prediction && btb_hit) ? btb_target : pc + 4;
 
 endmodule
@@ -69,11 +69,11 @@ module tage_predictor (
     output wire prediction
 );
 
-    // ---------- å‚æ•°é…ç½® ----------
-    parameter NUM_TABLES = 4;      // 4ä¸ªå†å²é•¿åº¦è¡¨ï¼ˆç®€åŒ–ç‰ˆï¼‰
-    parameter HISTORY_LEN [0:3] = '{1, 2, 4, 8}; // å‡ ä½•çº§æ•°å†å²é•¿åº¦
+    // ---------- ²ÎÊıÅäÖÃ ----------
+    parameter NUM_TABLES = 4;      // 4¸öÀúÊ·³¤¶È±í£¨¼ò»¯°æ£©
+    parameter int HISTORY_LEN [0:3] = '{1, 2, 4, 8}; // Ìí¼ÓintÀàĞÍÉùÃ÷
 
-    // ---------- å…¨å±€å†å²å¯„å­˜å™¨ ----------
+    // ---------- È«¾ÖÀúÊ·¼Ä´æÆ÷ ----------
     reg [63:0] global_history;
     always @(posedge clk) begin
         if (reset) 
@@ -82,44 +82,49 @@ module tage_predictor (
             global_history <= {global_history[62:0], branch_taken};
     end
 
-    // ---------- TAGEè¡¨å®šä¹‰ ----------
-    reg [1:0] tage_tables [0:NUM_TABLES-1][0:1023]; // 10-bitç´¢å¼•ï¼Œ2-bité¥±å’Œè®¡æ•°å™¨
+    // ---------- TAGE±í¶¨Òå ----------
+    reg [3:0] tage_tables [0:NUM_TABLES-1][0:1023]; // 10-bitË÷Òı£¬2-bit±¥ºÍ¼ÆÊıÆ÷+2-bit tag
 
-    // ---------- é¢„æµ‹é€»è¾‘ ----------
+    // ---------- Ô¤²âÂß¼­ ----------
     wire [NUM_TABLES-1:0] tag_matches;
     wire [1:0] table_predictions [0:NUM_TABLES-1];
-    wire [3:0] selected_table;     // é€‰æ‹©æœ€åŒ¹é…çš„è¡¨
+    wire [3:0] selected_table;     // Ñ¡Ôñ×îÆ¥ÅäµÄ±í
 
-    // å¹¶è¡ŒæŸ¥è¯¢æ‰€æœ‰è¡¨
+    // ²¢ĞĞ²éÑ¯ËùÓĞ±í
     generate
         for (genvar i = 0; i < NUM_TABLES; i++) begin
-            // è®¡ç®—ç´¢å¼•å’ŒTagï¼ˆç®€åŒ–ï¼šPC XOR å†å²ç‰‡æ®µï¼‰
+            // ¼ÆËãË÷ÒıºÍTag£¨¼ò»¯£ºPC XOR ÀúÊ·Æ¬¶Î£©
             wire [9:0] index = pc[9:0] ^ global_history[HISTORY_LEN[i]-1:0];
-            wire [15:0] tag = pc[25:10] ^ global_history[63:48];
+            wire [1:0] tag = pc[11:10] ^ global_history[1:0]; // ¼ò»¯tag
             
-            // æ£€æŸ¥TagåŒ¹é…
-            assign tag_matches[i] = (tage_tables[i][index][1:0] == tag[1:0]);
-            assign table_predictions[i] = tage_tables[i][index][2:1]; // 2-bité¢„æµ‹
+            // ¼ì²éTagÆ¥Åä
+            assign tag_matches[i] = (tage_tables[i][index][1:0] == tag);
+            assign table_predictions[i] = tage_tables[i][index][3:2]; // 2-bitÔ¤²â
             
-            // æ›´æ–°é€»è¾‘ï¼ˆåœ¨EXé˜¶æ®µç¡®è®¤åˆ†æ”¯ç»“æœåï¼‰
+            // ¸üĞÂÂß¼­£¨ÔÚEX½×¶ÎÈ·ÈÏ·ÖÖ§½á¹ûºó£©
             always @(posedge clk) begin
                 if (is_branch && tag_matches[i]) begin
-                    // æ›´æ–°é¥±å’Œè®¡æ•°å™¨
-                    if (branch_taken && (tage_tables[i][index][2:1] < 2'b11))
-                        tage_tables[i][index][2:1] <= tage_tables[i][index][2:1] + 1;
-                    else if (!branch_taken && (tage_tables[i][index][2:1] > 2'b00))
-                        tage_tables[i][index][2:1] <= tage_tables[i][index][2:1] - 1;
+                    // ¸üĞÂ±¥ºÍ¼ÆÊıÆ÷
+                    if (branch_taken && (tage_tables[i][index][3:2] < 2'b11))
+                        tage_tables[i][index][3:2] <= tage_tables[i][index][3:2] + 1;
+                    else if (!branch_taken && (tage_tables[i][index][3:2] > 2'b00))
+                        tage_tables[i][index][3:2] <= tage_tables[i][index][3:2] - 1;
+                end
+                // ·ÖÅäĞÂÌõÄ¿
+                else if (is_branch && !tag_matches[i] && selected_table == i) begin
+                    tage_tables[i][index][1:0] <= tag;
+                    tage_tables[i][index][3:2] <= branch_taken ? 2'b11 : 2'b00;
                 end
             end
         end
     endgenerate
 
-    // é€‰æ‹©æœ€é•¿çš„åŒ¹é…å†å²è¡¨
+    // Ñ¡Ôñ×î³¤µÄÆ¥ÅäÀúÊ·±í
     assign selected_table = (tag_matches[3] ? 3 : 
                            (tag_matches[2] ? 2 : 
                            (tag_matches[1] ? 1 : 0)));
 
-    // è¾“å‡ºé¢„æµ‹ç»“æœï¼ˆæœ€é«˜ä½ä¸ºæ–¹å‘ï¼‰
+    // Êä³öÔ¤²â½á¹û£¨×î¸ßÎ»Îª·½Ïò£©
     assign prediction = table_predictions[selected_table][1];
 
 endmodule
@@ -135,11 +140,11 @@ module loop_predictor (
     output wire loop_detected
 );
 
-    // ---------- å¾ªç¯çŠ¶æ€è®°å½• ----------
-    reg [31:0] loop_pc;            // å¾ªç¯å¼€å§‹çš„PC
-    reg [15:0] loop_count;         // å½“å‰è¿­ä»£æ¬¡æ•°
-    reg [15:0] loop_max;           // æ€»è¿­ä»£æ¬¡æ•°ï¼ˆå­¦ä¹ å¾—åˆ°ï¼‰
-    reg loop_active;               // æ˜¯å¦å¤„äºå¾ªç¯ä¸­
+    // ---------- Ñ­»·×´Ì¬¼ÇÂ¼ ----------
+    reg [31:0] loop_pc;            // Ñ­»·¿ªÊ¼µÄPC
+    reg [15:0] loop_count;         // µ±Ç°µü´ú´ÎÊı
+    reg [15:0] loop_max;           // ×Üµü´ú´ÎÊı£¨Ñ§Ï°µÃµ½£©
+    reg loop_active;               // ÊÇ·ñ´¦ÓÚÑ­»·ÖĞ
 
     assign loop_detected = loop_active;
     assign prediction = (loop_active && (loop_count < loop_max)) ? 1'b1 : 1'b0;
@@ -148,8 +153,9 @@ module loop_predictor (
         if (reset) begin
             loop_active <= 0;
             loop_count <= 0;
+            loop_max <= 0;
         end else if (is_branch) begin
-            // æ£€æµ‹å¾ªç¯æ¨¡å¼ï¼ˆç®€åŒ–ï¼šè¿ç»­ä¸¤æ¬¡ç›¸åŒPCçš„TAKENâ†’NOT TAKENï¼‰
+            // ¼ì²âÑ­»·Ä£Ê½£¨¼ò»¯£ºÁ¬ĞøÁ½´ÎÏàÍ¬PCµÄTAKEN¡úNOT TAKEN£©
             if (!loop_active && branch_taken) begin
                 loop_pc <= pc;
                 loop_count <= 1;
@@ -161,7 +167,7 @@ module loop_predictor (
                     loop_count <= 0;
                 end
             end
-            // æ¿€æ´»å¾ªç¯é¢„æµ‹
+            // ¼¤»îÑ­»·Ô¤²â
             loop_active <= (loop_max > 0) && (pc == loop_pc);
         end
     end
@@ -170,30 +176,30 @@ endmodule
 module btb (
     input wire clk,
     input wire reset,
-    input wire [31:0] pc,          // å½“å‰æŒ‡ä»¤PC
-    input wire [31:0] actual_target, // å®é™…ç›®æ ‡åœ°å€ï¼ˆæ¥è‡ªEXé˜¶æ®µï¼‰
-    input wire is_branch,           // å½“å‰æŒ‡ä»¤æ˜¯å¦æ˜¯åˆ†æ”¯
-    input wire branch_taken,        // å®é™…åˆ†æ”¯æ–¹å‘
-    output wire [31:0] pred_target, // é¢„æµ‹çš„ç›®æ ‡åœ°å€
-    output wire btb_hit             // BTBæ˜¯å¦å‘½ä¸­
+    input wire [31:0] pc,          // µ±Ç°Ö¸ÁîPC
+    input wire [31:0] actual_target, // Êµ¼ÊÄ¿±êµØÖ·£¨À´×ÔEX½×¶Î£©
+    input wire is_branch,           // µ±Ç°Ö¸ÁîÊÇ·ñÊÇ·ÖÖ§
+    input wire branch_taken,        // Êµ¼Ê·ÖÖ§·½Ïò
+    output wire [31:0] pred_target, // Ô¤²âµÄÄ¿±êµØÖ·
+    output wire btb_hit             // BTBÊÇ·ñÃüÖĞ
 );
-    parameter BTB_ENTRIES = 64;        // BTBæ¡ç›®æ•°ï¼ˆå»ºè®®2çš„å¹‚æ¬¡ï¼‰
+    parameter BTB_ENTRIES = 64;        // BTBÌõÄ¿Êı£¨½¨Òé2µÄÃİ´Î£©
     parameter BTB_INDEX_BITS = 6;      // log2(BTB_ENTRIES)
-    parameter TAG_BITS = 20;           // æ ‡ç­¾ä½å®½ï¼ˆPCé«˜ä½ï¼‰
-    // ---------- BTBè¡¨ç»“æ„ ----------
-    reg [TAG_BITS-1:0] tag [0:BTB_ENTRIES-1];  // æ ‡ç­¾ï¼ˆPCé«˜ä½ï¼‰
-    reg [31:0] target [0:BTB_ENTRIES-1];       // ç›®æ ‡åœ°å€
-    reg valid [0:BTB_ENTRIES-1];               // æœ‰æ•ˆä½
+    parameter TAG_BITS = 20;           // ±êÇ©Î»¿í£¨PC¸ßÎ»£©
+    // ---------- BTB±í½á¹¹ ----------
+    reg [TAG_BITS-1:0] tag [0:BTB_ENTRIES-1];  // ±êÇ©£¨PC¸ßÎ»£©
+    reg [31:0] target [0:BTB_ENTRIES-1];       // Ä¿±êµØÖ·
+    reg valid [0:BTB_ENTRIES-1];               // ÓĞĞ§Î»
 
-    // ---------- ç´¢å¼•è®¡ç®— ----------
-    wire [BTB_INDEX_BITS-1:0] index = pc[BTB_INDEX_BITS+1:2]; // å¿½ç•¥PCä½2ä½ï¼ˆå¯¹é½ï¼‰
-    wire [TAG_BITS-1:0] current_tag = pc[31:32-TAG_BITS];     // æå–PCé«˜ä½ä½œä¸ºTag
+    // ---------- Ë÷Òı¼ÆËã ----------
+    wire [BTB_INDEX_BITS-1:0] index = pc[BTB_INDEX_BITS+1:2]; // ºöÂÔPCµÍ2Î»£¨¶ÔÆë£©
+    wire [TAG_BITS-1:0] current_tag = pc[31:32-TAG_BITS];     // ÌáÈ¡PC¸ßÎ»×÷ÎªTag
 
-    // ---------- æŸ¥è¯¢é€»è¾‘ ----------
+    // ---------- ²éÑ¯Âß¼­ ----------
     assign btb_hit = (valid[index] && (tag[index] == current_tag));
-    assign pred_target = btb_hit ? target[index] : pc + 4;    // æœªå‘½ä¸­æ—¶é»˜è®¤PC+4
+    assign pred_target = btb_hit ? target[index] : pc + 4;    // Î´ÃüÖĞÊ±Ä¬ÈÏPC+4
 
-    // ---------- æ›´æ–°é€»è¾‘ ----------
+    // ---------- ¸üĞÂÂß¼­ ----------
     always @(posedge clk) begin
         if (reset) begin
             for (integer i = 0; i < BTB_ENTRIES; i++) begin
@@ -203,11 +209,10 @@ module btb (
             end
         end 
         else if (is_branch && branch_taken) begin
-            // æ›´æ–°BTBæ¡ç›®ï¼ˆæ— è®ºæ˜¯å¦å‘½ä¸­ï¼‰
+            // ¸üĞÂBTBÌõÄ¿£¨ÎŞÂÛÊÇ·ñÃüÖĞ£©
             tag[index] <= current_tag;
             target[index] <= actual_target;
             valid[index] <= 1'b1;
         end
     end
-
 endmodule

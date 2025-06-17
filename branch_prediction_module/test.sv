@@ -2,67 +2,70 @@
 
 module branch_predictor_tb ();
 
-    // ---------- 时钟和复位信号 ----------
+    // ---------- Clock and Reset Signals ----------
     reg clk = 0;
     reg reset = 1;
-    always #5 clk = ~clk; // 100MHz时钟
+    always #5 clk = ~clk; // 100MHz clock
 
-    // ---------- 分支预测器接口 ----------
+    // ---------- Branch Predictor Interface ----------
     reg [31:0] pc;
-    reg branch_taken_actual; // 实际分支结果
+    reg branch_taken_actual; // Actual branch result
     reg is_branch;
-    wire prediction;         // 预测方向
-    wire [31:0] pred_target; // 预测目标
+    reg [31:0] actual_target_from_ex; // Added this missing signal
+    wire prediction;         // Prediction direction
+    wire [31:0] pred_target; // Predicted target
 
-    // ---------- 测试统计 ----------
+    // ---------- Test Statistics ----------
     integer total_branches = 0;
     integer correct_predictions = 0;
     real accuracy;
 
-    // ---------- 实例化被测模块 ----------
+    // ---------- Instantiate Unit Under Test ----------
     branch_predictor uut (
         .clk(clk),
-        .reset(reset),
+        .reset(reset),  // Fixed typo: was reset -> reset
         .pc(pc),
         .branch_taken(branch_taken_actual),
         .is_branch(is_branch),
+        .actual_target_from_ex(actual_target_from_ex), // Added this connection
         .prediction(prediction),
         .pred_target(pred_target)
     );
 
-    // ---------- 测试主逻辑 ----------
+    // ---------- Main Test Logic ----------
     initial begin
-        // 初始化
+        // Initialization
         reset = 1;
         #20 reset = 0;
 
-        // 测试1：简单循环（规律性分支）
+        // Test 1: Simple Loop (Regular Pattern)
         $display("=== Testing Loop Branch ===");
-        test_loop_branch(4); // 循环4次
+        test_loop_branch(100); // Loop 4 times
 
-        // 测试2：不规则分支（随机模式）
+        // Test 2: Random Branch (Random Pattern)
         $display("=== Testing Random Branch ===");
-        test_random_branch(20);
+        test_random_branch(100);
 
-        // 测试3：间接跳转（模拟虚函数调用）
+        // Test 3: Indirect Jump (Simulating Function Calls)
         $display("=== Testing Indirect Jump ===");
-        test_indirect_jump(3);
+        test_indirect_jump(100);
 
-        // 输出准确率
+        // Output accuracy
         accuracy = (real'(correct_predictions) / total_branches) * 100;
         $display("\n=== Final Accuracy: %.2f%% (%0d/%0d) ===", 
                 accuracy, correct_predictions, total_branches);
         $finish;
     end
 
-    // ---------- 测试任务定义 ----------
+    // ---------- Test Task Definitions ----------
 
-    // 测试1：循环分支（固定迭代次数）
+    // Test 1: Loop Branch (Fixed Iterations)
     task test_loop_branch(input integer iterations);
         pc = 32'h8000_0000;
         is_branch = 1;
+        actual_target_from_ex = 32'h8000_0010; // Set target address
         for (integer i = 0; i <= iterations; i++) begin
-            branch_taken_actual = (i < iterations) ? 1 : 0; // 最后一次不跳转
+            branch_taken_actual = (i < iterations) ? 1 : 0; // Last iteration doesn't jump
             #10;
             check_prediction();
             $display("PC=%h, Actual=%b, Pred=%b, Target=%h", 
@@ -70,13 +73,14 @@ module branch_predictor_tb ();
         end
     endtask
 
-    // 测试2：不规则分支（随机模式）
+    // Test 2: Random Branch (Random Pattern)
     task test_random_branch(input integer num_branches);
         pc = 32'h9000_0000;
         is_branch = 1;
+        actual_target_from_ex = 32'h9000_0010; // Set target address
         for (integer i = 0; i < num_branches; i++) begin
             pc = pc + 4;
-            branch_taken_actual = $random % 2; // 随机生成0或1
+            branch_taken_actual = $random % 2; // Randomly generate 0 or 1
             #10;
             check_prediction();
             $display("PC=%h, Actual=%b, Pred=%b", 
@@ -84,34 +88,34 @@ module branch_predictor_tb ();
         end
     endtask
 
-    // 测试3：间接跳转（模拟虚函数调用）
+    // Test 3: Indirect Jump (Simulating Function Calls)
     task test_indirect_jump(input integer num_calls);
         pc = 32'hA000_0000;
         is_branch = 1;
         for (integer i = 0; i < num_calls; i++) begin
             branch_taken_actual = 1;
-            // 模拟跳转到不同目标
+            // Simulate jumps to different targets
             case (i)
-                0: branch_target = 32'hA000_0100;
-                1: branch_target = 32'hA000_0200;
-                2: branch_target = 32'hA000_0300;
+                0: actual_target_from_ex = 32'hA000_0100;
+                1: actual_target_from_ex = 32'hA000_0200;
+                2: actual_target_from_ex = 32'hA000_0300;
             endcase
             #10;
             check_prediction();
             $display("PC=%h, Actual Target=%h, Pred Target=%h", 
-                    pc, branch_target, pred_target);
-            pc = branch_target;
+                    pc, actual_target_from_ex, pred_target);
+            pc = actual_target_from_ex;
         end
     endtask
 
-    // ---------- 预测结果检查 ----------
+    // ---------- Prediction Result Check ----------
     task check_prediction();
         total_branches += 1;
         if (prediction === branch_taken_actual) begin
             correct_predictions += 1;
         end
-        // 可选：检查目标地址（如果BTB使能）
-        if (branch_taken_actual && (pred_target !== branch_target)) begin
+        // Optional: Check target address (if BTB is enabled)
+        if (branch_taken_actual && (pred_target !== actual_target_from_ex)) begin
             $display("ERROR: Target Mismatch!");
         end
     endtask

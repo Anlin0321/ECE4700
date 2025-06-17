@@ -1,6 +1,6 @@
 `timescale 1ns/1ps
 
-module branch_predictor_tb ();
+module branch_predictor_tb();
 
     
     reg clk = 0;
@@ -9,27 +9,29 @@ module branch_predictor_tb ();
 
     
     reg [31:0] pc;
-    reg branch_taken_actual; 
-    reg is_branch;
-    reg [31:0] actual_target_from_ex; 
-    wire prediction;         
-    wire [31:0] pred_target; 
+    reg [31:0] instruction;       
+    reg branch_taken_actual;      
+    reg is_branch_actual;         
+    wire prediction;              
+    wire is_branch_predicted;     
 
     
     integer total_branches = 0;
     integer correct_predictions = 0;
+    integer correct_branch_detection = 0;
     real accuracy;
+    real detection_accuracy;
 
     
     branch_predictor uut (
         .clk(clk),
-        .reset(reset),  
+        .reset(reset),
         .pc(pc),
-        .branch_taken(branch_taken_actual),
-        .is_branch(is_branch),
-        .actual_target_from_ex(actual_target_from_ex), 
+        .instruction(instruction),
+        .branch_taken_actual(branch_taken_actual),
+        .is_branch_actual(is_branch_actual),
         .prediction(prediction),
-        .pred_target(pred_target)
+        .is_branch_predicted(is_branch_predicted)
     );
 
     
@@ -38,21 +40,32 @@ module branch_predictor_tb ();
         reset = 1;
         #20 reset = 0;
 
+        $display("\n=== Start testing ===");
         
-        $display("=== Testing Loop Branch ===");
-        test_loop_branch(100); 
+        
+        $display("\n=== Test 1: Fixed Branch===");
+        test_conditional_branch(10);
 
         
-        $display("=== Testing Random Branch ===");
-        test_random_branch(100);
+        $display("\n=== Test 2: JAL ===");
+        test_jal_instructions(5);
 
         
-        $display("=== Testing Indirect Jump ===");
-        test_indirect_jump(100);
+        $display("\n=== Test3: JALR ===");
+        test_jalr_instructions(5);
+
+        
+        $display("\n=== Test4: Combined ===");
+        test_mixed_instructions(20);
 
         
         accuracy = (real'(correct_predictions) / total_branches) * 100;
-        $display("\n=== Final Accuracy: %.2f%% (%0d/%0d) ===", 
+        detection_accuracy = (real'(correct_branch_detection) / total_branches) * 100;
+        
+        $display("\n=== Results ===");
+        $display("Branch Detection Accuracy: %.2f%% (%0d/%0d)", 
+                detection_accuracy, correct_branch_detection, total_branches);
+        $display("Branch Prediction Accuracy: %.2f%% (%0d/%0d)", 
                 accuracy, correct_predictions, total_branches);
         $finish;
     end
@@ -60,64 +73,136 @@ module branch_predictor_tb ();
     
 
     
-    task test_loop_branch(input integer iterations);
+    task test_conditional_branch(input integer num_branches);
         pc = 32'h8000_0000;
-        is_branch = 1;
-        actual_target_from_ex = 32'h8000_0010; 
-        for (integer i = 0; i <= iterations; i++) begin
-            branch_taken_actual = (i < iterations) ? 1 : 0; 
-            #10;
-            check_prediction();
-            $display("PC=%h, Actual=%b, Pred=%b, Target=%h", 
-                    pc, branch_taken_actual, prediction, pred_target);
-        end
-    endtask
-
-    
-    task test_random_branch(input integer num_branches);
-        pc = 32'h9000_0000;
-        is_branch = 1;
-        actual_target_from_ex = 32'h9000_0010; 
+        
+        instruction = {7'b0, 5'd1, 5'd2, 3'b000, 4'b0, 1'b1, 1'b1, 1'b0, 1'b0, 1'b1, 1'b1}; 
+        
         for (integer i = 0; i < num_branches; i++) begin
             pc = pc + 4;
-            branch_taken_actual = $random % 2; 
-            #10;
-            check_prediction();
-            $display("PC=%h, Actual=%b, Pred=%b", 
-                    pc, branch_taken_actual, prediction);
-        end
-    endtask
-
-    
-    task test_indirect_jump(input integer num_calls);
-        pc = 32'hA000_0000;
-        is_branch = 1;
-        for (integer i = 0; i < num_calls; i++) begin
-            branch_taken_actual = 1;
             
-            case (i)
-                0: actual_target_from_ex = 32'hA000_0100;
-                1: actual_target_from_ex = 32'hA000_0200;
-                2: actual_target_from_ex = 32'hA000_0300;
-            endcase
+            branch_taken_actual = (i < 8) ? 1 : 0;
+            is_branch_actual = 1;
+            
             #10;
-            check_prediction();
-            $display("PC=%h, Actual Target=%h, Pred Target=%h", 
-                    pc, actual_target_from_ex, pred_target);
-            pc = actual_target_from_ex;
+            check_results();
+            
+            $display("PC=%h | Actual: %b | Predict: %b | Instruction Predicted: %b", 
+                    pc, branch_taken_actual, prediction, is_branch_predicted);
         end
     endtask
 
     
-    task check_prediction();
-        total_branches += 1;
-        if (prediction === branch_taken_actual) begin
-            correct_predictions += 1;
+    task test_jal_instructions(input integer num_jumps);
+        pc = 32'h9000_0000;
+        
+        instruction = {12'h100, 5'd1, 7'b1101111}; 
+        
+        for (integer i = 0; i < num_jumps; i++) begin
+            pc = pc + 4;
+            branch_taken_actual = 1; 
+            is_branch_actual = 1;
+            
+            #10;
+            check_results();
+            
+            $display("PC=%h | JAL | Predict: %b | Instruction Predicted: %b", 
+                    pc, prediction, is_branch_predicted);
+        end
+    endtask
+
+    
+    task test_jalr_instructions(input integer num_jumps);
+        pc = 32'hA000_0000;
+        
+        instruction = {12'h0, 5'd2, 3'b0, 5'd1, 7'b1100111}; 
+        
+        for (integer i = 0; i < num_jumps; i++) begin
+            pc = pc + 4;
+            branch_taken_actual = 1; 
+            is_branch_actual = 1;
+            
+            #10;
+            check_results();
+            
+            $display("PC=%h | JALR | Predict: %b | Instruction Predicted: %b", 
+                    pc, prediction, is_branch_predicted);
+        end
+    endtask
+
+    
+    task test_mixed_instructions(input integer num_instructions);
+        automatic integer branch_counter = 0;
+        
+        for (integer i = 0; i < num_instructions; i++) begin
+            pc = pc + 4;
+            
+            
+            case ($urandom % 4)
+                0: begin 
+                    instruction = {12'h0, 5'd1, 5'd2, 3'b0, 5'd3, 7'b0110011}; 
+                    branch_taken_actual = 0;
+                    is_branch_actual = 0;
+                end
+                1: begin 
+                    instruction = {7'b0, 5'd1, 5'd2, 3'b000, 4'b0, 1'b1, 1'b1, 1'b0, 1'b0, 1'b1, 1'b1}; 
+                    branch_taken_actual = $random % 2;
+                    is_branch_actual = 1;
+                    branch_counter++;
+                end
+                2: begin 
+                    instruction = {12'h100, 5'd1, 7'b1101111}; 
+                    branch_taken_actual = 1;
+                    is_branch_actual = 1;
+                    branch_counter++;
+                end
+                3: begin 
+                    instruction = {12'h0, 5'd2, 3'b0, 5'd1, 7'b1100111}; 
+                    branch_taken_actual = 1;
+                    is_branch_actual = 1;
+                    branch_counter++;
+                end
+            endcase
+            
+            #10;
+            if (is_branch_actual) check_results();
+            
+            $display("PC=%h | Type: %s | Actual: %b | Predict: %b | Instruction predicted: %b", 
+                    pc, get_inst_type(instruction), 
+                    branch_taken_actual, prediction, is_branch_predicted);
         end
         
-        if (branch_taken_actual && (pred_target !== actual_target_from_ex)) begin
-            $display("ERROR: Target Mismatch!");
+        total_branches += branch_counter;
+    endtask
+
+    
+    task check_results();
+        total_branches += 1;
+        
+        
+        if (is_branch_predicted == is_branch_actual) begin
+            correct_branch_detection += 1;
+        end else begin
+            $display("Error: Fail to detect branch, PC=%h", pc);
+        end
+        
+        
+        if (is_branch_actual && (prediction === branch_taken_actual)) begin
+            correct_predictions += 1;
+        end else if (is_branch_actual) begin
+            $display("Error: Wrong prediction, PC=%h Actual: %b Predict: %b", 
+                     pc, branch_taken_actual, prediction);
         end
     endtask
+
+    
+    function string get_inst_type(input [31:0] inst);
+        case (inst[6:0])
+            7'b1100011: return "Branch";
+            7'b1101111: return "JAL     ";
+            7'b1100111: return "JALR    ";
+            default:    return "Non-branch  ";
+        endcase
+    endfunction
 
 endmodule

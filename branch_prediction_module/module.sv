@@ -1,13 +1,22 @@
 module branch_predictor (
     input wire clk,
     input wire reset,
-    input wire [31:0] pc,          
-    input wire branch_taken,       
-    input wire is_branch,          
-    input wire [31:0] actual_target_from_ex, 
-    output wire prediction,        
-    output wire [31:0] pred_target 
+    input wire [31:0] pc,               
+    input wire [31:0] instruction,      
+    input wire branch_taken_actual,     
+    input wire is_branch_actual,        
+    output wire prediction,             
+    output wire is_branch_predicted      
 );
+
+    
+    wire [6:0] opcode = instruction[6:0];
+    wire is_branch_inst = (opcode == 7'b1100011); 
+    wire is_jal_inst = (opcode == 7'b1101111);    
+    wire is_jalr_inst = (opcode == 7'b1100111);   
+    
+    
+    assign is_branch_predicted = is_branch_inst | is_jal_inst | is_jalr_inst;
 
     
     wire loop_prediction;
@@ -19,43 +28,29 @@ module branch_predictor (
         .clk(clk),
         .reset(reset),
         .pc(pc),
-        .branch_taken(branch_taken),
-        .is_branch(is_branch),
+        .branch_taken(branch_taken_actual),
+        .is_branch(is_branch_actual),
         .prediction(loop_prediction),
-        .loop_detected(use_loop_pred)  
+        .loop_detected(use_loop_pred)
     );
 
     tage_predictor tage_predictor_inst (
         .clk(clk),
         .reset(reset),
         .pc(pc),
-        .branch_taken(branch_taken),
-        .is_branch(is_branch),
+        .branch_taken(branch_taken_actual),
+        .is_branch(is_branch_actual),
         .prediction(tage_prediction)
     );
 
     
     
-    assign prediction = use_loop_pred ? loop_prediction : tage_prediction;
-
+    wire unconditional_taken = is_jal_inst | is_jalr_inst;
     
-    wire btb_hit;
-    wire [31:0] btb_target;
-
     
-    btb btb_inst (
-        .clk(clk),
-        .reset(reset),
-        .pc(pc),
-        .actual_target(actual_target_from_ex),
-        .is_branch(is_branch),
-        .branch_taken(branch_taken),
-        .pred_target(btb_target),
-        .btb_hit(btb_hit)
-    );
-
     
-    assign pred_target = (prediction && btb_hit) ? btb_target : pc + 4;
+    assign prediction = unconditional_taken ? 1'b1 : 
+                       (use_loop_pred ? loop_prediction : tage_prediction);
 
 endmodule
 

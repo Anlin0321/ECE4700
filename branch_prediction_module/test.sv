@@ -40,31 +40,27 @@ module branch_predictor_tb();
         reset = 1;
         #20 reset = 0;
 
-        $display("\n=== Start testing ===");
+       $display("\n=== Start testing ===");
         
         
-        $display("\n=== Test 1: Fixed Branch===");
-        test_conditional_branch(10);
-
+       $display("\n=== Test 1: Fixed Branch===");
+       test_conditional_branch(500);
         
-        $display("\n=== Test 2: JAL ===");
-        test_jal_instructions(5);
-
+       $display("\n=== Test 2: JAL ===");
+       test_jal_instructions(500);
         
-        $display("\n=== Test3: JALR ===");
-        test_jalr_instructions(5);
-
+       $display("\n=== Test3: JALR ===");
+       test_jalr_instructions(500);
         
         $display("\n=== Test4: Combined ===");
-        test_mixed_instructions(20);
-
+        test_mixed_instructions(300);
         
         accuracy = (real'(correct_predictions) / total_branches) * 100;
         detection_accuracy = (real'(correct_branch_detection) / total_branches) * 100;
         
         $display("\n=== Results ===");
-        $display("Branch Detection Accuracy: %.2f%% (%0d/%0d)", 
-                detection_accuracy, correct_branch_detection, total_branches);
+        // $display("Branch Detection Accuracy: %.2f%% (%0d/%0d)", 
+        //         detection_accuracy, correct_branch_detection, total_branches);
         $display("Branch Prediction Accuracy: %.2f%% (%0d/%0d)", 
                 accuracy, correct_predictions, total_branches);
         $finish;
@@ -87,8 +83,8 @@ module branch_predictor_tb();
             #10;
             check_results();
             
-            $display("PC=%h | Actual: %b | Predict: %b | Instruction Predicted: %b", 
-                    pc, branch_taken_actual, prediction, is_branch_predicted);
+            // $display("PC=%h | Actual: %b | Predict: %b | Instruction Predicted: %b", 
+            //         pc, branch_taken_actual, prediction, is_branch_predicted);
         end
     endtask
 
@@ -106,8 +102,8 @@ module branch_predictor_tb();
             #10;
             check_results();
             
-            $display("PC=%h | JAL | Predict: %b | Instruction Predicted: %b", 
-                    pc, prediction, is_branch_predicted);
+            // $display("PC=%h | JAL | Predict: %b | Instruction Predicted: %b", 
+            //         pc, prediction, is_branch_predicted);
         end
     endtask
 
@@ -125,8 +121,8 @@ module branch_predictor_tb();
             #10;
             check_results();
             
-            $display("PC=%h | JALR | Predict: %b | Instruction Predicted: %b", 
-                    pc, prediction, is_branch_predicted);
+            // $display("PC=%h | JALR | Predict: %b | Instruction Predicted: %b", 
+            //         pc, prediction, is_branch_predicted);
         end
     endtask
 
@@ -167,9 +163,9 @@ module branch_predictor_tb();
             #10;
             if (is_branch_actual) check_results();
             
-            $display("PC=%h | Type: %s | Actual: %b | Predict: %b | Instruction predicted: %b", 
-                    pc, get_inst_type(instruction), 
-                    branch_taken_actual, prediction, is_branch_predicted);
+            // $display("PC=%h | Type: %s | Actual: %b | Predict: %b | Instruction predicted: %b", 
+            //         pc, get_inst_type(instruction), 
+            //         branch_taken_actual, prediction, is_branch_predicted);
         end
         
         total_branches += branch_counter;
@@ -183,15 +179,15 @@ module branch_predictor_tb();
         if (is_branch_predicted == is_branch_actual) begin
             correct_branch_detection += 1;
         end else begin
-            $display("Error: Fail to detect branch, PC=%h", pc);
+            // $display("Error: Fail to detect branch, PC=%h", pc);
         end
         
         
         if (is_branch_actual && (prediction === branch_taken_actual)) begin
             correct_predictions += 1;
         end else if (is_branch_actual) begin
-            $display("Error: Wrong prediction, PC=%h Actual: %b Predict: %b", 
-                     pc, branch_taken_actual, prediction);
+            // $display("Error: Wrong prediction, PC=%h Actual: %b Predict: %b", 
+            //          pc, branch_taken_actual, prediction);
         end
     endtask
 

@@ -105,6 +105,14 @@ module ex_stage
     // ---- ID/EX input ----
     input  ID_EX_PACKET   id_ex_in,
 
+    // ---- Forwarding inputs ----
+    input  EX_MEM_PACKET  ex_mem_in,
+    input  MEM_WB_PACKET  mem_wb_in,
+    input  logic [1:0]    forwardA_stage [`ISSUE_WIDTH-1:0],
+    input  logic [$clog2(`ISSUE_WIDTH)-1:0] forwardA_slot [`ISSUE_WIDTH-1:0],
+    input  logic [1:0]    forwardB_stage [`ISSUE_WIDTH-1:0],
+    input  logic [$clog2(`ISSUE_WIDTH)-1:0] forwardB_slot [`ISSUE_WIDTH-1:0],
+
     // ---- EX/MEM output ----
     output EX_MEM_PACKET  ex_mem_out,
 
@@ -113,25 +121,64 @@ module ex_stage
     output XLEN_t         branch_target
 );
 
-    // ---- simple ALU (add/sub only for demo) ----
+    // ---- ALU with forwarding ----
     genvar w;
     generate
         for (w = 0; w < `ISSUE_WIDTH; w++) begin : G_ALU
+            // Operand A mux with forwarding
+            logic [`XLEN-1:0] opa_mux_out;
             always_comb begin
-                ex_mem_out.alu_result[w] = id_ex_in.rs1_value[w] + id_ex_in.rs2_value[w];
-                ex_mem_out.NPC       [w] = id_ex_in.NPC[w];
-                ex_mem_out.take_branch[w]= 1'b0;   // not implemented
-                ex_mem_out.rs2_value [w] = id_ex_in.rs2_value[w];
+                case (id_ex_in.opa_select[w])
+                    OPA_IS_RS1:  opa_mux_out = id_ex_in.rs1_value[w];
+                    OPA_IS_NPC:  opa_mux_out = id_ex_in.NPC[w];
+                    OPA_IS_PC:   opa_mux_out = id_ex_in.PC[w];
+                    OPA_IS_ZERO: opa_mux_out = 0;
+                    default:     opa_mux_out = id_ex_in.rs1_value[w];
+                endcase
+                
+                // Apply forwarding for RS1
+                if (forwardA_stage[w] == 2'b01) // EX/MEM forward
+                    opa_mux_out = ex_mem_in.alu_result[forwardA_slot[w]];
+                else if (forwardA_stage[w] == 2'b10) // MEM/WB forward
+                    opa_mux_out = mem_wb_in.wb_data[forwardA_slot[w]];
+            end
+
+            // Operand B mux with forwarding
+            logic [`XLEN-1:0] opb_mux_out;
+            always_comb begin
+                case (id_ex_in.opb_select[w])
+                    OPB_IS_RS2:   opb_mux_out = id_ex_in.rs2_value[w];
+                    OPB_IS_I_IMM: opb_mux_out = `RV32_signext_Iimm(id_ex_in.inst[w]);
+                    OPB_IS_S_IMM: opb_mux_out = `RV32_signext_Simm(id_ex_in.inst[w]);
+                    OPB_IS_B_IMM: opb_mux_out = `RV32_signext_Bimm(id_ex_in.inst[w]);
+                    OPB_IS_U_IMM: opb_mux_out = `RV32_signext_Uimm(id_ex_in.inst[w]);
+                    OPB_IS_J_IMM: opb_mux_out = `RV32_signext_Jimm(id_ex_in.inst[w]);
+                    default:      opb_mux_out = id_ex_in.rs2_value[w];
+                endcase
+                
+                // Apply forwarding for RS2
+                if (forwardB_stage[w] == 2'b01) // EX/MEM forward
+                    opb_mux_out = ex_mem_in.alu_result[forwardB_slot[w]];
+                else if (forwardB_stage[w] == 2'b10) // MEM/WB forward
+                    opb_mux_out = mem_wb_in.wb_data[forwardB_slot[w]];
+            end
+
+            // ALU operation
+            always_comb begin
+                ex_mem_out.alu_result[w] = opa_mux_out + opb_mux_out; // Simplified ALU
+                ex_mem_out.NPC[w]        = id_ex_in.NPC[w];
+                ex_mem_out.take_branch[w]= 1'b0;   // Not implemented in this simple version
+                ex_mem_out.rs2_value[w]  = opb_mux_out; // Forwarded value if needed
 
                 // pass-through control
-                ex_mem_out.rd_mem       [w] = id_ex_in.rd_mem[w];
-                ex_mem_out.wr_mem       [w] = id_ex_in.wr_mem[w];
-                ex_mem_out.dest_reg_idx [w] = id_ex_in.dest_reg_idx[w];
-                ex_mem_out.mem_size     [w] = id_ex_in.mem_size[w];
-                ex_mem_out.halt         [w] = id_ex_in.halt[w];
-                ex_mem_out.illegal      [w] = id_ex_in.illegal[w];
-                ex_mem_out.csr_op       [w] = id_ex_in.csr_op[w];
-                ex_mem_out.valid        [w] = id_ex_in.valid[w];
+                ex_mem_out.rd_mem[w]       = id_ex_in.rd_mem[w];
+                ex_mem_out.wr_mem[w]       = id_ex_in.wr_mem[w];
+                ex_mem_out.dest_reg_idx[w] = id_ex_in.dest_reg_idx[w];
+                ex_mem_out.mem_size[w]     = id_ex_in.mem_size[w];
+                ex_mem_out.halt[w]         = id_ex_in.halt[w];
+                ex_mem_out.illegal[w]      = id_ex_in.illegal[w];
+                ex_mem_out.csr_op[w]       = id_ex_in.csr_op[w];
+                ex_mem_out.valid[w]        = id_ex_in.valid[w];
             end
         end
     endgenerate

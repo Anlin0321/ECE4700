@@ -27,7 +27,7 @@ module pipeline
     // ---------------------------------------------------------
     // Stage registers
     // ---------------------------------------------------------
-    IF_ID_PACKET   if_id_q;
+    IF_ID_PACKET   if_id_q, if_id_d;
     ID_EX_PACKET   id_ex_q;
     EX_MEM_PACKET  ex_mem_q;
     MEM_WB_PACKET  mem_wb_q;
@@ -38,6 +38,40 @@ module pipeline
     logic          stall, flush;
     logic          branch_take;
     XLEN_t         branch_target;
+
+    // Stalling signals
+    logic [`ISSUE_WIDTH-1:0] stall_slots;
+    logic                    any_stall;
+
+    // Forwarding signals
+    logic [1:0] forwardA_stage [`ISSUE_WIDTH-1:0];
+    logic [$clog2(`ISSUE_WIDTH)-1:0] forwardA_slot [`ISSUE_WIDTH-1:0];
+    logic [1:0] forwardB_stage [`ISSUE_WIDTH-1:0];
+    logic [$clog2(`ISSUE_WIDTH)-1:0] forwardB_slot [`ISSUE_WIDTH-1:0];
+
+    // ---------------------------------------------------------
+    // Instantiate forwarding unit
+    // ---------------------------------------------------------
+    forwarding_unit u_forward (
+        .id_ex_q(id_ex_q),
+        .ex_mem_q(ex_mem_q),
+        .mem_wb_q(mem_wb_q),
+        .forwardA_stage(forwardA_stage),
+        .forwardA_slot(forwardA_slot),
+        .forwardB_stage(forwardB_stage),
+        .forwardB_slot(forwardB_slot)
+    );
+
+    // ---------------------------------------------------------
+    // Instantiate stalling detection unit
+    // ---------------------------------------------------------
+    stalling_detection_unit u_stall_detect (
+        .if_id_q(if_id_q),
+        .id_ex_q(id_ex_q),
+        .stall(stall_slots)
+    );
+    
+    assign any_stall = |stall_slots;
 
     // ---------------------------------------------------------
     // Instantiate stages
@@ -50,8 +84,17 @@ module pipeline
         .new_PC     (branch_target),
         .icache_addr(icache_addr),
         .icache_data(icache_data),
-        .if_id_out  (if_id_q)
+        .if_id_out  (if_id_d)
     );
+
+    // IF/ID pipeline register with stalling support
+    always_ff @(posedge clk or posedge rst) begin
+        if (rst) begin
+            if_id_q <= '0;
+        end else if (!stall) begin
+            if_id_q <= if_id_d;
+        end
+    end
 
     // ---- regfile shared between ID & WB ----
     logic [4:0]    rs1_idx [`ISSUE_WIDTH-1:0];
@@ -106,6 +149,12 @@ module pipeline
         .clk        (clk),
         .rst        (rst),
         .id_ex_in   (id_ex_q),
+        .ex_mem_in      (ex_mem_q),  // For forwarding
+        .mem_wb_in      (mem_wb_q),  // For forwarding
+        .forwardA_stage (forwardA_stage),
+        .forwardA_slot  (forwardA_slot),
+        .forwardB_stage (forwardB_stage),
+        .forwardB_slot  (forwardB_slot),
         .ex_mem_out (ex_mem_q),
         .branch_taken(branch_take),
         .branch_target(branch_target)

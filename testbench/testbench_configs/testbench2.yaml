@@ -1,0 +1,7 @@
+# rv32 testcase 2 (hazard free)
+len   : 1000        # number of instructions
+hazard: 0.0         # RAW-hazard probability
+branch: 0.0         # branch instruction probability
+taken : 0.0         # branch-taken probability
+seed  : 42
+out   : testbench2

@@ -53,7 +53,7 @@ module branch_predictor_tb();
        test_jalr_instructions(500);
         
         $display("\n=== Test4: Combined ===");
-        test_mixed_instructions(300);
+        test_mixed_instructions(500);
         
         accuracy = (real'(correct_predictions) / total_branches) * 100;
         detection_accuracy = (real'(correct_branch_detection) / total_branches) * 100;

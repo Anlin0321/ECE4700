@@ -39,6 +39,15 @@ module pipeline
     logic          branch_take;
     XLEN_t         branch_target;
 
+    // Forwarding signals
+    logic [1:0] forwardA_stage [`ISSUE_WIDTH-1:0];
+    logic [$clog2(`ISSUE_WIDTH)-1:0] forwardA_slot [`ISSUE_WIDTH-1:0];
+    logic [1:0] forwardB_stage [`ISSUE_WIDTH-1:0];
+    logic [$clog2(`ISSUE_WIDTH)-1:0] forwardB_slot [`ISSUE_WIDTH-1:0];
+    
+    // Stalling signals
+    logic [`ISSUE_WIDTH-1:0] stall_signal;
+
     // ---------------------------------------------------------
     // Instantiate stages
     // ---------------------------------------------------------
@@ -102,13 +111,26 @@ module pipeline
         .id_ex_out  (id_ex_q)
     );
 
+//    ex_stage U_EX (
+//        .clk        (clk),
+//        .rst        (rst),
+//        .id_ex_in   (id_ex_q),
+//        .ex_mem_out (ex_mem_q),
+//        .branch_taken(branch_take),
+//        .branch_target(branch_target)
+//    );
+
     ex_stage U_EX (
-        .clk        (clk),
-        .rst        (rst),
-        .id_ex_in   (id_ex_q),
-        .ex_mem_out (ex_mem_q),
-        .branch_taken(branch_take),
-        .branch_target(branch_target)
+        .clk            (clk),
+        .rst            (rst),
+        .id_ex_in       (id_ex_q),
+        .ex_mem_out     (ex_mem_q),
+        .branch_taken   (branch_take),
+        .branch_target  (branch_target),
+        .forwardA_stage (forwardA_stage),
+        .forwardA_slot  (forwardA_slot),
+        .forwardB_stage (forwardB_stage),
+        .forwardB_slot  (forwardB_slot)
     );
 
     mem_stage U_MEM (
@@ -132,11 +154,30 @@ module pipeline
         .illegal_out(/* unused */)
     );
 
+    // ---- Stalling Detection Unit ----
+    stalling_detection_unit U_STALL (
+        .if_id_q    (if_id_q),
+        .id_ex_q    (id_ex_q),
+        .stall      (stall_signal)  // Combine with other stall sources
+    );
+
+    // ---- forwarding unit ----
+    forwarding_unit U_FU (
+        .id_ex_q        (id_ex_q),
+        .ex_mem_q       (ex_mem_q),
+        .mem_wb_q       (mem_wb_q),
+        .forwardA_stage (forwardA_stage),
+        .forwardA_slot  (forwardA_slot),
+        .forwardB_stage (forwardB_stage),
+        .forwardB_slot  (forwardB_slot)
+    );
+
     // ---------------------------------------------------------
     // Global stall / flush
     // ---------------------------------------------------------
     assign flush = branch_take;
-    assign stall = sb_stall;   // + other sources (e.g., cache miss)
+//    assign stall = sb_stall;   // + other sources (e.g., cache miss)
+    assign stall = sb_stall | any_valid(stall_signal);
 
 endmodule
 

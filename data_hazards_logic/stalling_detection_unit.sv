@@ -9,7 +9,7 @@ module stalling_detection_unit (
 );
 
     // Internal signals
-    logic [`ISSUE_WIDTH-1:0] load_use_hazard;
+    logic load_use_hazard;
     logic [`ISSUE_WIDTH-1:0] intra_group_hazard;
 
     // 1. Load-Use Hazard detection per slot
@@ -23,7 +23,7 @@ module stalling_detection_unit (
                     if (id_ex_q.valid[ex_idx] && id_ex_q.rd_mem[ex_idx] && (id_ex_q.dest_reg_idx[ex_idx] != 0)) begin
                         if (((id_rs1 == id_ex_q.dest_reg_idx[ex_idx]) && (id_rs1 != 0)) ||
                             ((id_rs2 == id_ex_q.dest_reg_idx[ex_idx]) && (id_rs2 != 0)))
-                            load_use_hazard[id_idx] = 1'b1;
+                            load_use_hazard = 1'b1;
                     end
                 end
             end
@@ -55,7 +55,7 @@ module stalling_detection_unit (
     //  Combine for final stall signal per slot
     always_comb begin
         for (int i = 0; i < `ISSUE_WIDTH; i++) begin
-            stall[i] = load_use_hazard[i] || intra_group_hazard[i];
+            stall[i] = load_use_hazard || intra_group_hazard[i];
         end
     end
 endmodule

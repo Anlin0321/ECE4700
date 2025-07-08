@@ -241,6 +241,9 @@ module id_stage (
 
     // ---- ID/EX output ----
     output ID_EX_PACKET   id_ex_out
+
+    // New inputs for stall signals
+    input  logic [`ISSUE_WIDTH-1:0] stall;
 );
 
     //----------------------------------------------------------
@@ -284,39 +287,48 @@ module id_stage (
         assign id_ex_out.PC [w] = if_id_in.PC [w];
 
         // ---- Lane-local valid (no intra-group squashes yet) ----
-        assign id_ex_out.valid[w] = if_id_in.valid[w];
+        // assign id_ex_out.valid[w] = if_id_in.valid[w];
         assign issue_valid[w]     = id_ex_out.valid[w];
         assign issue_rs1  [w]     = rf_rs1_idx[w];
         assign issue_rs2  [w]     = rf_rs2_idx[w];
     end endgenerate
 
-    //----------------------------------------------------------
-    // 2) Simple intra-group RAW/WAW kill (optional)
-    //----------------------------------------------------------
-    logic [`ISSUE_WIDTH-1:0] kill;
-    integer i, j;
     always_comb begin
-        kill = '0;
-        for (i = 1; i < `ISSUE_WIDTH; i++) begin
-            for (j = 0; j < i; j++) begin
-                if ( id_ex_out.valid[i] &&
-                     ( (rf_rs1_idx[i] == id_ex_out.dest_reg_idx[j] && id_ex_out.dest_reg_idx[j] != 0) ||
-                       (rf_rs2_idx[i] == id_ex_out.dest_reg_idx[j] && id_ex_out.dest_reg_idx[j] != 0) ||
-                       (id_ex_out.dest_reg_idx[i] == id_ex_out.dest_reg_idx[j] && id_ex_out.dest_reg_idx[i] != 0) ) )
-                    kill[i] = 1'b1;
-            end
+        for (int i = 0; i < `ISSUE_WIDTH; i++) begin
+            if (stall[i])
+                id_ex_out.valid[i] = 1'b0;
+            else
+                id_ex_out.valid[i] = if_id_in.valid[w];
         end
     end
 
-    // apply kill mask
-    generate for (w = 0; w < `ISSUE_WIDTH; w++) begin : G_KILL
-        always_comb begin
-            if (kill[w]) begin
-                id_ex_out.valid[w]   = 1'b0;
-                issue_valid   [w]    = 1'b0;
-            end
-        end
-    end endgenerate
+//    //----------------------------------------------------------
+//    // 2) Simple intra-group RAW/WAW kill (optional)
+//    //----------------------------------------------------------
+//    logic [`ISSUE_WIDTH-1:0] kill;
+//    integer i, j;
+//    always_comb begin
+//        kill = '0;
+//        for (i = 1; i < `ISSUE_WIDTH; i++) begin
+//            for (j = 0; j < i; j++) begin
+//                if ( id_ex_out.valid[i] &&
+//                     ( (rf_rs1_idx[i] == id_ex_out.dest_reg_idx[j] && id_ex_out.dest_reg_idx[j] != 0) ||
+//                       (rf_rs2_idx[i] == id_ex_out.dest_reg_idx[j] && id_ex_out.dest_reg_idx[j] != 0) ||
+//                       (id_ex_out.dest_reg_idx[i] == id_ex_out.dest_reg_idx[j] && id_ex_out.dest_reg_idx[i] != 0) ) )
+//                    kill[i] = 1'b1;
+//            end
+//        end
+//    end
+
+//    // apply kill mask
+//    generate for (w = 0; w < `ISSUE_WIDTH; w++) begin : G_KILL
+//        always_comb begin
+//            if (kill[w]) begin
+//                id_ex_out.valid[w]   = 1'b0;
+//                issue_valid   [w]    = 1'b0;
+//            end
+//        end
+//    end endgenerate
 endmodule
 
 //module id_stage(         

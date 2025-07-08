@@ -17,12 +17,12 @@ module if_stage
 (
     input  logic          clk, rst,
     // ---- pipeline control ----
-    input  logic          stall,
+    input  logic [`ISSUE_WIDTH-1:0] stall,
     input  logic          flush,
     input  XLEN_t         new_PC,       // redirected PC on branch
     // ---- I-cache interface ----
     output XLEN_t         icache_addr,
-    input  logic [95:0]   icache_data,  // 3 ¡Á 32-bit words per hit
+    input  logic [95:0]   icache_data,  // 3 ï¿½ï¿½ 32-bit words per hit
     // ---- IF/ID latch ----
     output IF_ID_PACKET   if_id_out
 );
@@ -31,13 +31,20 @@ module if_stage
     XLEN_t PC_q, PC_n;
 
     always_ff @(posedge clk or posedge rst) begin
-        if (rst) PC_q <= `PC_RESET;
-        else if (!stall) PC_q <= PC_n;
+        if (rst) begin
+            PC_q <= `PC_RESET;
+            if_id_out.valid <= '0;
+        end
+        else if (!stall) begin 
+            PC_q <= PC_n;
+            if_id_out.valid <= ~flush ? {`ISSUE_WIDTH{1'b1}} : '0;
+        end
     end
 
     // next PC logic
     always_comb begin
         if (flush)                 PC_n = new_PC;
+        else if (|stall)           PC_n = PC_q;
         else                       PC_n = PC_q + 12;   // 3 instructions
     end
 
@@ -51,7 +58,7 @@ module if_stage
             assign if_id_out.inst [w]  = icache_data >> (w*32);
             assign if_id_out.PC   [w]  = PC_q + w*4;
             assign if_id_out.NPC  [w]  = PC_q + (w+1)*4;
-            assign if_id_out.valid[w]  = ~stall & ~flush;
+            assign if_id_out.valid[w]  = ~(|stall & ~stall[w]) & ~flush;
         end
     endgenerate
 endmodule

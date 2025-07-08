@@ -58,5 +58,4 @@ module stalling_detection_unit (
             stall[i] = load_use_hazard[i] || intra_group_hazard[i];
         end
     end
-
 endmodule

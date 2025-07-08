@@ -113,35 +113,100 @@ module ex_stage
     output XLEN_t         branch_target
 );
 
-    // ---- simple ALU (add/sub only for demo) ----
+    // Internal signals for each way
     genvar w;
     generate
-        for (w = 0; w < `ISSUE_WIDTH; w++) begin : G_ALU
-            always_comb begin
-                ex_mem_out.alu_result[w] = id_ex_in.rs1_value[w] + id_ex_in.rs2_value[w];
-                ex_mem_out.NPC       [w] = id_ex_in.NPC[w];
-                ex_mem_out.take_branch[w]= 1'b0;   // not implemented
-                ex_mem_out.rs2_value [w] = id_ex_in.rs2_value[w];
+        for (w = 0; w < `ISSUE_WIDTH; w++) begin : G_EX_STAGE
+            logic [`XLEN-1:0] opa_mux_out, opb_mux_out;
+            logic brcond_result;
+            logic take_branch;
+            logic is_jalr;
+            logic [`XLEN-1:0] branch_target_internal;
 
-                // pass-through control
-                ex_mem_out.rd_mem       [w] = id_ex_in.rd_mem[w];
-                ex_mem_out.wr_mem       [w] = id_ex_in.wr_mem[w];
-                ex_mem_out.dest_reg_idx [w] = id_ex_in.dest_reg_idx[w];
-                ex_mem_out.mem_size     [w] = id_ex_in.mem_size[w];
-                ex_mem_out.halt         [w] = id_ex_in.halt[w];
-                ex_mem_out.illegal      [w] = id_ex_in.illegal[w];
-                ex_mem_out.csr_op       [w] = id_ex_in.csr_op[w];
-                ex_mem_out.valid        [w] = id_ex_in.valid[w];
+            // JALR detection using opcode field
+            assign is_jalr = (id_ex_in.inst[w][6:0] == `RV32_JALR_OP);
+
+            // OPA Mux
+            always_comb begin
+                opa_mux_out = `XLEN'hdeadfbac;  // Default for simulation debug
+                case (id_ex_in.opa_select[w])
+                    OPA_IS_RS1:  opa_mux_out = id_ex_in.rs1_value[w];
+                    OPA_IS_NPC:  opa_mux_out = id_ex_in.NPC[w];
+                    OPA_IS_PC:   opa_mux_out = id_ex_in.PC[w];
+                    OPA_IS_ZERO: opa_mux_out = 0;
+                endcase
             end
+
+            // OPB Mux
+            always_comb begin
+                opb_mux_out = `XLEN'hfacefeed;  // Default for simulation debug
+                case (id_ex_in.opb_select[w])
+                    OPB_IS_RS2:   opb_mux_out = id_ex_in.rs2_value[w];
+                    OPB_IS_I_IMM: opb_mux_out = `RV32_signext_Iimm(id_ex_in.inst[w]);
+                    OPB_IS_S_IMM: opb_mux_out = `RV32_signext_Simm(id_ex_in.inst[w]);
+                    OPB_IS_B_IMM: opb_mux_out = `RV32_signext_Bimm(id_ex_in.inst[w]);
+                    OPB_IS_U_IMM: opb_mux_out = `RV32_signext_Uimm(id_ex_in.inst[w]);
+                    OPB_IS_J_IMM: opb_mux_out = `RV32_signext_Jimm(id_ex_in.inst[w]);
+                endcase
+            end
+
+            // ALU instantiation
+            alu alu_inst (
+                .opa(opa_mux_out),
+                .opb(opb_mux_out),
+                .func(id_ex_in.alu_func[w]),
+                .result(ex_mem_out.alu_result[w])
+            );
+
+            // Branch condition checker
+            brcond brcond_inst (
+                .rs1(id_ex_in.rs1_value[w]),
+                .rs2(id_ex_in.rs2_value[w]),
+                .func(id_ex_in.inst[w].b.funct3),
+                .cond(brcond_result)
+            );
+
+            // Take branch signal
+            assign take_branch = id_ex_in.uncond_branch[w] | 
+                                (id_ex_in.cond_branch[w] & brcond_result);
+            assign ex_mem_out.take_branch[w] = take_branch;
+
+            // Pass-through signals
+            assign ex_mem_out.NPC[w]           = id_ex_in.NPC[w];
+            assign ex_mem_out.rs2_value[w]     = id_ex_in.rs2_value[w];
+            assign ex_mem_out.rd_mem[w]        = id_ex_in.rd_mem[w];
+            assign ex_mem_out.wr_mem[w]        = id_ex_in.wr_mem[w];
+            assign ex_mem_out.dest_reg_idx[w]  = id_ex_in.dest_reg_idx[w];
+            assign ex_mem_out.mem_size[w]      = id_ex_in.inst[w].r.funct3; // From instruction
+            assign ex_mem_out.halt[w]          = id_ex_in.halt[w];
+            assign ex_mem_out.illegal[w]       = id_ex_in.illegal[w];
+            assign ex_mem_out.csr_op[w]        = id_ex_in.csr_op[w];
+            assign ex_mem_out.valid[w]         = id_ex_in.valid[w];
         end
     endgenerate
 
-    //------------------------------------------------------------------
-    //  Branch feedback  (use helper instead of reduction-OR on array)
-    //------------------------------------------------------------------
-    assign branch_taken  = any_valid(ex_mem_out.take_branch);
-    assign branch_target = branch_taken ? ex_mem_out.alu_result[0]
-                                        : '0;    // first lane is fine
+    // Branch feedback logic
+    logic found_target;
+    always_comb begin
+        branch_taken = 1'b0;
+        branch_target = `XLEN'h0;
+        found_target = 1'b0;
+        
+        for (int w = 0; w < `ISSUE_WIDTH; w++) begin
+            if (!found_target && ex_mem_out.valid[w] && ex_mem_out.take_branch[w]) begin
+                branch_taken = 1'b1;
+                
+                // Handle JALR special case (clear LSB of target)
+                if (id_ex_in.inst[w][6:0] == `RV32_JALR_OP) 
+                    branch_target = {ex_mem_out.alu_result[w][`XLEN-1:1], 1'b0};
+                else
+                    branch_target = ex_mem_out.alu_result[w];
+                    
+                found_target = 1'b1;
+            end
+        end
+    end
+
 endmodule
 
 //module ex_stage(

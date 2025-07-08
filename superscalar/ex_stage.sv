@@ -97,25 +97,30 @@ module brcond(// Inputs
 	
 endmodule // brcond
 
-
 module ex_stage
 (
-    input  logic          clk, rst,
+    input  logic              clk, rst,
 
     // ---- ID/EX input ----
-    input  ID_EX_PACKET   id_ex_in,
+    input  ID_EX_PACKET       id_ex_in,
+    
+    // ---- Forwarding Data Inputs ----
+    // Data from the EX/MEM pipeline register for forwarding
+    input  EX_MEM_PACKET      ex_mem_q,  
+    // Data from the MEM/WB pipeline register for forwarding
+    input  MEM_WB_PACKET      mem_wb_q,
 
     // ---- EX/MEM output ----
-    output EX_MEM_PACKET  ex_mem_out,
+    output EX_MEM_PACKET      ex_mem_out,
 
     // ---- branch feedback ----
-    output logic          branch_taken,
-    output XLEN_t         branch_target
+    output logic              branch_taken,
+    output XLEN_t             branch_target,
 
-    // ---- forwarding inputs ----
-    input  logic [1:0]    forwardA_stage [`ISSUE_WIDTH-1:0],
+    // ---- forwarding control inputs ----
+    input  logic [1:0]        forwardA_stage [`ISSUE_WIDTH-1:0],
     input  logic [$clog2(`ISSUE_WIDTH)-1:0] forwardA_slot [`ISSUE_WIDTH-1:0],
-    input  logic [1:0]    forwardB_stage [`ISSUE_WIDTH-1:0],
+    input  logic [1:0]        forwardB_stage [`ISSUE_WIDTH-1:0],
     input  logic [$clog2(`ISSUE_WIDTH)-1:0] forwardB_slot [`ISSUE_WIDTH-1:0]
 );
 
@@ -128,6 +133,9 @@ module ex_stage
             logic take_branch;
             logic is_jalr;
             logic [`XLEN-1:0] branch_target_internal;
+
+            // **FIX 1: Declared forwarded value signals**
+            logic [`XLEN-1:0] rs1_value_forwarded, rs2_value_forwarded;
             
             // Handle forwarding for rs1 and rs2 values
             always_comb begin
@@ -155,10 +163,9 @@ module ex_stage
 
             // OPA Mux
             always_comb begin
-                opa_mux_out = `XLEN'hdeadfbac;  // Default for simulation debug
+                opa_mux_out = `XLEN'hdeadfbac; // Default for simulation debug
                 case (id_ex_in.opa_select[w])
-//                    OPA_IS_RS1:  opa_mux_out = id_ex_in.rs1_value[w];
-                    OPA_IS_RS1:  opa_mux_out = rs1_value_forwarded;
+                    OPA_IS_RS1:  opa_mux_out = rs1_value_forwarded; // Uses forwarded value
                     OPA_IS_NPC:  opa_mux_out = id_ex_in.NPC[w];
                     OPA_IS_PC:   opa_mux_out = id_ex_in.PC[w];
                     OPA_IS_ZERO: opa_mux_out = 0;
@@ -167,10 +174,9 @@ module ex_stage
 
             // OPB Mux
             always_comb begin
-                opb_mux_out = `XLEN'hfacefeed;  // Default for simulation debug
+                opb_mux_out = `XLEN'hfacefeed; // Default for simulation debug
                 case (id_ex_in.opb_select[w])
-//                    OPB_IS_RS2:   opb_mux_out = id_ex_in.rs2_value[w];
-                    OPB_IS_RS2:   opb_mux_out = rs2_value_forwarded;
+                    OPB_IS_RS2:   opb_mux_out = rs2_value_forwarded; // Uses forwarded value
                     OPB_IS_I_IMM: opb_mux_out = `RV32_signext_Iimm(id_ex_in.inst[w]);
                     OPB_IS_S_IMM: opb_mux_out = `RV32_signext_Simm(id_ex_in.inst[w]);
                     OPB_IS_B_IMM: opb_mux_out = `RV32_signext_Bimm(id_ex_in.inst[w]);
@@ -189,28 +195,30 @@ module ex_stage
 
             // Branch condition checker
             brcond brcond_inst (
-                .rs1(id_ex_in.rs1_value[w]),
-                .rs2(id_ex_in.rs2_value[w]),
+                // **FIX 2: Use forwarded values for branch condition**
+                .rs1(rs1_value_forwarded),
+                .rs2(rs2_value_forwarded),
                 .func(id_ex_in.inst[w].b.funct3),
                 .cond(brcond_result)
             );
 
             // Take branch signal
             assign take_branch = id_ex_in.uncond_branch[w] | 
-                                (id_ex_in.cond_branch[w] & brcond_result);
+                                 (id_ex_in.cond_branch[w] & brcond_result);
             assign ex_mem_out.take_branch[w] = take_branch;
 
             // Pass-through signals
-            assign ex_mem_out.NPC[w]           = id_ex_in.NPC[w];
-            assign ex_mem_out.rs2_value[w]     = id_ex_in.rs2_value[w];
-            assign ex_mem_out.rd_mem[w]        = id_ex_in.rd_mem[w];
-            assign ex_mem_out.wr_mem[w]        = id_ex_in.wr_mem[w];
-            assign ex_mem_out.dest_reg_idx[w]  = id_ex_in.dest_reg_idx[w];
-            assign ex_mem_out.mem_size[w]      = id_ex_in.inst[w].r.funct3; // From instruction
-            assign ex_mem_out.halt[w]          = id_ex_in.halt[w];
-            assign ex_mem_out.illegal[w]       = id_ex_in.illegal[w];
-            assign ex_mem_out.csr_op[w]        = id_ex_in.csr_op[w];
-            assign ex_mem_out.valid[w]         = id_ex_in.valid[w];
+            assign ex_mem_out.NPC[w]          = id_ex_in.NPC[w];
+            // **FIX 3: Pass forwarded rs2_value to MEM stage for stores**
+            assign ex_mem_out.rs2_value[w]    = rs2_value_forwarded;
+            assign ex_mem_out.rd_mem[w]       = id_ex_in.rd_mem[w];
+            assign ex_mem_out.wr_mem[w]       = id_ex_in.wr_mem[w];
+            assign ex_mem_out.dest_reg_idx[w] = id_ex_in.dest_reg_idx[w];
+            assign ex_mem_out.mem_size[w]     = id_ex_in.inst[w].r.funct3; // From instruction
+            assign ex_mem_out.halt[w]         = id_ex_in.halt[w];
+            assign ex_mem_out.illegal[w]      = id_ex_in.illegal[w];
+            assign ex_mem_out.csr_op[w]       = id_ex_in.csr_op[w];
+            assign ex_mem_out.valid[w]        = id_ex_in.valid[w];
         end
     endgenerate
 
@@ -237,6 +245,146 @@ module ex_stage
     end
 
 endmodule
+// tzb's fix
+//module ex_stage
+//(
+//    input  logic          clk, rst,
+
+//    // ---- ID/EX input ----
+//    input  ID_EX_PACKET   id_ex_in,
+
+//    // ---- EX/MEM output ----
+//    output EX_MEM_PACKET  ex_mem_out,
+
+//    // ---- branch feedback ----
+//    output logic          branch_taken,
+//    output XLEN_t         branch_target
+
+//    // ---- forwarding inputs ----
+//    input  logic [1:0]    forwardA_stage [`ISSUE_WIDTH-1:0],
+//    input  logic [$clog2(`ISSUE_WIDTH)-1:0] forwardA_slot [`ISSUE_WIDTH-1:0],
+//    input  logic [1:0]    forwardB_stage [`ISSUE_WIDTH-1:0],
+//    input  logic [$clog2(`ISSUE_WIDTH)-1:0] forwardB_slot [`ISSUE_WIDTH-1:0]
+//);
+
+//    // Internal signals for each way
+//    genvar w;
+//    generate
+//        for (w = 0; w < `ISSUE_WIDTH; w++) begin : G_EX_STAGE
+//            logic [`XLEN-1:0] opa_mux_out, opb_mux_out;
+//            logic brcond_result;
+//            logic take_branch;
+//            logic is_jalr;
+//            logic [`XLEN-1:0] branch_target_internal;
+            
+//            // Handle forwarding for rs1 and rs2 values
+//            always_comb begin
+//                // Default to original value
+//                rs1_value_forwarded = id_ex_in.rs1_value[w];
+//                rs2_value_forwarded = id_ex_in.rs2_value[w];
+                
+//                // Forwarding logic for rs1
+//                case (forwardA_stage[w])
+//                    2'b01: rs1_value_forwarded = ex_mem_q.alu_result[forwardA_slot[w]];  // EX/MEM forward
+//                    2'b10: rs1_value_forwarded = mem_wb_q.wb_data[forwardA_slot[w]];     // MEM/WB forward
+//                    default: ; // No forwarding
+//                endcase
+                
+//                // Forwarding logic for rs2
+//                case (forwardB_stage[w])
+//                    2'b01: rs2_value_forwarded = ex_mem_q.alu_result[forwardB_slot[w]];  // EX/MEM forward
+//                    2'b10: rs2_value_forwarded = mem_wb_q.wb_data[forwardB_slot[w]];     // MEM/WB forward
+//                    default: ; // No forwarding
+//                endcase
+//            end
+
+//            // JALR detection using opcode field
+//            assign is_jalr = (id_ex_in.inst[w][6:0] == `RV32_JALR_OP);
+
+//            // OPA Mux
+//            always_comb begin
+//                opa_mux_out = `XLEN'hdeadfbac;  // Default for simulation debug
+//                case (id_ex_in.opa_select[w])
+////                    OPA_IS_RS1:  opa_mux_out = id_ex_in.rs1_value[w];
+//                    OPA_IS_RS1:  opa_mux_out = rs1_value_forwarded;
+//                    OPA_IS_NPC:  opa_mux_out = id_ex_in.NPC[w];
+//                    OPA_IS_PC:   opa_mux_out = id_ex_in.PC[w];
+//                    OPA_IS_ZERO: opa_mux_out = 0;
+//                endcase
+//            end
+
+//            // OPB Mux
+//            always_comb begin
+//                opb_mux_out = `XLEN'hfacefeed;  // Default for simulation debug
+//                case (id_ex_in.opb_select[w])
+////                    OPB_IS_RS2:   opb_mux_out = id_ex_in.rs2_value[w];
+//                    OPB_IS_RS2:   opb_mux_out = rs2_value_forwarded;
+//                    OPB_IS_I_IMM: opb_mux_out = `RV32_signext_Iimm(id_ex_in.inst[w]);
+//                    OPB_IS_S_IMM: opb_mux_out = `RV32_signext_Simm(id_ex_in.inst[w]);
+//                    OPB_IS_B_IMM: opb_mux_out = `RV32_signext_Bimm(id_ex_in.inst[w]);
+//                    OPB_IS_U_IMM: opb_mux_out = `RV32_signext_Uimm(id_ex_in.inst[w]);
+//                    OPB_IS_J_IMM: opb_mux_out = `RV32_signext_Jimm(id_ex_in.inst[w]);
+//                endcase
+//            end
+
+//            // ALU instantiation
+//            alu alu_inst (
+//                .opa(opa_mux_out),
+//                .opb(opb_mux_out),
+//                .func(id_ex_in.alu_func[w]),
+//                .result(ex_mem_out.alu_result[w])
+//            );
+
+//            // Branch condition checker
+//            brcond brcond_inst (
+//                .rs1(id_ex_in.rs1_value[w]),
+//                .rs2(id_ex_in.rs2_value[w]),
+//                .func(id_ex_in.inst[w].b.funct3),
+//                .cond(brcond_result)
+//            );
+
+//            // Take branch signal
+//            assign take_branch = id_ex_in.uncond_branch[w] | 
+//                                (id_ex_in.cond_branch[w] & brcond_result);
+//            assign ex_mem_out.take_branch[w] = take_branch;
+
+//            // Pass-through signals
+//            assign ex_mem_out.NPC[w]           = id_ex_in.NPC[w];
+//            assign ex_mem_out.rs2_value[w]     = id_ex_in.rs2_value[w];
+//            assign ex_mem_out.rd_mem[w]        = id_ex_in.rd_mem[w];
+//            assign ex_mem_out.wr_mem[w]        = id_ex_in.wr_mem[w];
+//            assign ex_mem_out.dest_reg_idx[w]  = id_ex_in.dest_reg_idx[w];
+//            assign ex_mem_out.mem_size[w]      = id_ex_in.inst[w].r.funct3; // From instruction
+//            assign ex_mem_out.halt[w]          = id_ex_in.halt[w];
+//            assign ex_mem_out.illegal[w]       = id_ex_in.illegal[w];
+//            assign ex_mem_out.csr_op[w]        = id_ex_in.csr_op[w];
+//            assign ex_mem_out.valid[w]         = id_ex_in.valid[w];
+//        end
+//    endgenerate
+
+//    // Branch feedback logic
+//    logic found_target;
+//    always_comb begin
+//        branch_taken = 1'b0;
+//        branch_target = `XLEN'h0;
+//        found_target = 1'b0;
+        
+//        for (int w = 0; w < `ISSUE_WIDTH; w++) begin
+//            if (!found_target && ex_mem_out.valid[w] && ex_mem_out.take_branch[w]) begin
+//                branch_taken = 1'b1;
+                
+//                // Handle JALR special case (clear LSB of target)
+//                if (id_ex_in.inst[w][6:0] == `RV32_JALR_OP) 
+//                    branch_target = {ex_mem_out.alu_result[w][`XLEN-1:1], 1'b0};
+//                else
+//                    branch_target = ex_mem_out.alu_result[w];
+                    
+//                found_target = 1'b1;
+//            end
+//        end
+//    end
+
+//endmodule
 
 //module ex_stage(
 //	input clock,               // system clock

@@ -15,53 +15,108 @@
 
 module if_stage
 (
-    input  logic          clk, rst,
+    input  logic                      clk, rst,
     // ---- pipeline control ----
-    input  logic [`ISSUE_WIDTH-1:0] stall,
-    input  logic          flush,
-    input  XLEN_t         new_PC,       // redirected PC on branch
+    input  logic [`ISSUE_WIDTH-1:0]   stall,
+    input  logic                      flush,
+    input  XLEN_t                     new_PC,       // redirected PC on branch
     // ---- I-cache interface ----
-    output XLEN_t         icache_addr,
-    input  logic [95:0]   icache_data,  // 3 �� 32-bit words per hit
+    output XLEN_t                     icache_addr,
+    input  logic [95:0]               icache_data,  // 3 x 32-bit words per hit
     // ---- IF/ID latch ----
-    output IF_ID_PACKET   if_id_out
+    output IF_ID_PACKET               if_id_out
 );
 
     // ---- program counter ----
     XLEN_t PC_q, PC_n;
 
+    // This is the registered logic for the IF stage
     always_ff @(posedge clk or posedge rst) begin
         if (rst) begin
             PC_q <= `PC_RESET;
-            if_id_out.valid <= '0;
+            if_id_out.valid <= '{default: 0};
         end
-        else if (!stall) begin 
+        // FIX: Replaced '!|stall' with a more portable comparison to zero
+        else if (stall == '0) begin 
             PC_q <= PC_n;
-            if_id_out.valid <= ~flush ? {`ISSUE_WIDTH{1'b1}} : '0;
+            if_id_out.valid <= ~flush ? '{default: 1} : '{default: 0};
         end
     end
 
-    // next PC logic
+    // Combinational logic for the next PC value
     always_comb begin
-        if (flush)                 PC_n = new_PC;
-        else if (|stall)           PC_n = PC_q;
-        else                       PC_n = PC_q + 12;   // 3 instructions
+        if (flush)
+            PC_n = new_PC;
+        // FIX: Replaced '|stall' with a more portable comparison to zero
+        else if (stall != '0)
+            PC_n = PC_q;      // If any slot is stalled, hold the PC
+        else
+            PC_n = PC_q + (`ISSUE_WIDTH * 4); // Advance PC by the number of instructions fetched
     end
 
     // ---- I-cache request ----
-    assign icache_addr = {PC_q[31:2], 2'b00};          // word-aligned
+    assign icache_addr = {PC_q[31:2], 2'b00};      // word-aligned
 
-    // ---- split line into 3 instructions ----
+    // ---- Split cache line into individual instructions for the IF/ID packet ----
     genvar w;
     generate
         for (w = 0; w < `ISSUE_WIDTH; w++) begin : G_SPLIT
-            assign if_id_out.inst [w]  = icache_data >> (w*32);
-            assign if_id_out.PC   [w]  = PC_q + w*4;
-            assign if_id_out.NPC  [w]  = PC_q + (w+1)*4;
-            assign if_id_out.valid[w]  = ~(|stall & ~stall[w]) & ~flush;
+            assign if_id_out.inst[w]  = icache_data[w*32 +: 32];
+            assign if_id_out.PC[w]    = PC_q + (w * 4);
+            assign if_id_out.NPC[w]   = PC_q + ((w + 1) * 4);
         end
     endgenerate
 endmodule
+//tzb's fix
+//module if_stage
+//(
+//    input  logic          clk, rst,
+//    // ---- pipeline control ----
+//    input  logic [`ISSUE_WIDTH-1:0] stall,
+//    input  logic          flush,
+//    input  XLEN_t         new_PC,       // redirected PC on branch
+//    // ---- I-cache interface ----
+//    output XLEN_t         icache_addr,
+//    input  logic [95:0]   icache_data,  // 3 �� 32-bit words per hit
+//    // ---- IF/ID latch ----
+//    output IF_ID_PACKET   if_id_out
+//);
+
+//    // ---- program counter ----
+//    XLEN_t PC_q, PC_n;
+
+//    always_ff @(posedge clk or posedge rst) begin
+//        if (rst) begin
+//            PC_q <= `PC_RESET;
+//            if_id_out.valid <= '0;
+//        end
+//        else if (!stall) begin 
+//            PC_q <= PC_n;
+//            if_id_out.valid <= ~flush ? {`ISSUE_WIDTH{1'b1}} : '0;
+//        end
+//    end
+
+//    // next PC logic
+//    always_comb begin
+//        if (flush)                 PC_n = new_PC;
+//        else if (|stall)           PC_n = PC_q;
+//        else                       PC_n = PC_q + 12;   // 3 instructions
+//    end
+
+//    // ---- I-cache request ----
+//    assign icache_addr = {PC_q[31:2], 2'b00};          // word-aligned
+
+//    // ---- split line into 3 instructions ----
+//    genvar w;
+//    generate
+//        for (w = 0; w < `ISSUE_WIDTH; w++) begin : G_SPLIT
+//            assign if_id_out.inst [w]  = icache_data >> (w*32);
+//            assign if_id_out.PC   [w]  = PC_q + w*4;
+//            assign if_id_out.NPC  [w]  = PC_q + (w+1)*4;
+//            assign if_id_out.valid[w]  = ~(|stall & ~stall[w]) & ~flush;
+//        end
+//    endgenerate
+//endmodule
 
 //module if_stage(
 //	input         clock,                  // system clock

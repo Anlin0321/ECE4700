@@ -1,0 +1,32 @@
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "D:/SunYihao/ece470/final_project/ECE4700/superscalar/sys_defs.svh" into library xil_defaultlib
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "D:/SunYihao/ece470/final_project/ECE4700/superscalar/ISA.svh" into library xil_defaultlib
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "D:/SunYihao/ece470/final_project/ECE4700/superscalar/ex_stage.sv" into library xil_defaultlib
+INFO: [VRFC 10-311] analyzing module alu
+INFO: [VRFC 10-311] analyzing module brcond
+INFO: [VRFC 10-311] analyzing module ex_stage
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "D:/SunYihao/ece470/final_project/ECE4700/data_hazards_logic/forwarding_unit.sv" into library xil_defaultlib
+INFO: [VRFC 10-311] analyzing module forwarding_unit
+WARNING: [VRFC 10-3824] variable 'rs1' must explicitly be declared as automatic or static [D:/SunYihao/ece470/final_project/ECE4700/data_hazards_logic/forwarding_unit.sv:107]
+WARNING: [VRFC 10-3824] variable 'rs2' must explicitly be declared as automatic or static [D:/SunYihao/ece470/final_project/ECE4700/data_hazards_logic/forwarding_unit.sv:108]
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "D:/SunYihao/ece470/final_project/ECE4700/superscalar/id_stage.sv" into library xil_defaultlib
+INFO: [VRFC 10-311] analyzing module decoder
+INFO: [VRFC 10-311] analyzing module id_stage
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "D:/SunYihao/ece470/final_project/ECE4700/superscalar/if_stage.sv" into library xil_defaultlib
+INFO: [VRFC 10-311] analyzing module if_stage
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "D:/SunYihao/ece470/final_project/ECE4700/superscalar/mem_stage.sv" into library xil_defaultlib
+INFO: [VRFC 10-311] analyzing module mem_stage
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "D:/SunYihao/ece470/final_project/ECE4700/superscalar/regfile.sv" into library xil_defaultlib
+INFO: [VRFC 10-311] analyzing module regfile
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "D:/SunYihao/ece470/final_project/ECE4700/superscalar/scoreboard.sv" into library xil_defaultlib
+INFO: [VRFC 10-311] analyzing module scoreboard
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "D:/SunYihao/ece470/final_project/ECE4700/data_hazards_logic/stalling_detection_unit.sv" into library xil_defaultlib
+INFO: [VRFC 10-311] analyzing module stalling_detection_unit
+WARNING: [VRFC 10-3824] variable 'id_rs1' must explicitly be declared as automatic or static [D:/SunYihao/ece470/final_project/ECE4700/data_hazards_logic/stalling_detection_unit.sv:20]
+WARNING: [VRFC 10-3824] variable 'id_rs2' must explicitly be declared as automatic or static [D:/SunYihao/ece470/final_project/ECE4700/data_hazards_logic/stalling_detection_unit.sv:21]
+WARNING: [VRFC 10-3824] variable 'later_rs1' must explicitly be declared as automatic or static [D:/SunYihao/ece470/final_project/ECE4700/data_hazards_logic/stalling_detection_unit.sv:41]
+WARNING: [VRFC 10-3824] variable 'later_rs2' must explicitly be declared as automatic or static [D:/SunYihao/ece470/final_project/ECE4700/data_hazards_logic/stalling_detection_unit.sv:42]
+WARNING: [VRFC 10-3824] variable 'earlier_rd' must explicitly be declared as automatic or static [D:/SunYihao/ece470/final_project/ECE4700/data_hazards_logic/stalling_detection_unit.sv:45]
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "D:/SunYihao/ece470/final_project/ECE4700/superscalar/wb_stage.sv" into library xil_defaultlib
+INFO: [VRFC 10-311] analyzing module wb_stage
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "D:/SunYihao/ece470/final_project/ECE4700/superscalar/pipeline.sv" into library xil_defaultlib
+INFO: [VRFC 10-311] analyzing module pipeline

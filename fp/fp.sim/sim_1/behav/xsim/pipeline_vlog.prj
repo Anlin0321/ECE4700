@@ -1,0 +1,18 @@
+# compile verilog/system verilog design source files
+sv xil_defaultlib "D:/SunYihao/ece470/final_project/ECE4700/superscalar/sys_defs.svh" "D:/SunYihao/ece470/final_project/ECE4700/superscalar/ISA.svh" --include "../../../../../superscalar" --include "../../../../../testbench" \
+"../../../../../superscalar/ex_stage.sv" \
+"../../../../../data_hazards_logic/forwarding_unit.sv" \
+"../../../../../superscalar/id_stage.sv" \
+"../../../../../superscalar/if_stage.sv" \
+"../../../../../superscalar/mem_stage.sv" \
+"../../../../../superscalar/regfile.sv" \
+"../../../../../superscalar/scoreboard.sv" \
+"../../../../../data_hazards_logic/stalling_detection_unit.sv" \
+"../../../../../superscalar/wb_stage.sv" \
+"../../../../../superscalar/pipeline.sv" \
+
+# compile glbl module
+verilog xil_defaultlib "glbl.v"
+
+# Do not sort compile order
+nosort

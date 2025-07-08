@@ -1,0 +1,10 @@
+seed: 105
+output: "loop_dominated.s"
+codelen: 2500
+hazard: 0.5
+weights: [0.05, 0.05, 0.3, 0.3, 0.3]
+regnum: 10
+membase: "0x3000"
+max_loop_depth: 5
+loop_exit_prob: 0.15
+loop_insert_prob: 0.35

@@ -20,61 +20,152 @@ module branch_predictor (
     // Unconditional branches always taken
     wire unconditional_taken = is_jal_inst | is_jalr_inst;
     
-    // TAGE prediction
+    // TAGE prediction with loop predictor
     wire tage_prediction;
+    wire loop_prediction;
+    wire use_loop_pred;
     
-    tage_predictor tage_predictor_inst (
+    tage_predictor #(
+        .NUM_TABLES(7),
+        .TAG_WIDTH(14),
+        .CTR_WIDTH(3),
+        .TABLE_SIZE(2048),
+        .GHIST_WIDTH(256),
+        .USEFUL_WIDTH(2),
+        .ALLOC_THRESH(2)
+    ) tage_predictor_inst (
         .clk(clk),
         .reset(reset),
         .pc(pc),
         .branch_taken(branch_taken_actual),
         .is_branch(is_branch_actual),
-        .prediction(tage_prediction)
+        .prediction(tage_prediction),
+        .loop_prediction(loop_prediction),
+        .use_loop_pred(use_loop_pred)
     );
     
-    // Final prediction
-    assign prediction = unconditional_taken ? 1'b1 : tage_prediction;
+    // Final prediction with loop priority
+    wire raw_prediction;
 
+    assign raw_prediction = unconditional_taken ? 1'b1 :
+                             (use_loop_pred ? loop_prediction : tage_prediction);
+    
+    assign prediction = !raw_prediction;
 endmodule
 
-module tage_predictor (
+module tage_predictor #(
+    parameter NUM_TABLES = 7,         // Including bimodal table
+    parameter TAG_WIDTH = 14,          // Tag width for TAGE tables
+    parameter CTR_WIDTH = 3,           // Counter width
+    parameter TABLE_SIZE = 2048,       // Entries per table
+    parameter GHIST_WIDTH = 256,       // Global history width
+    parameter USEFUL_WIDTH = 2,        // Useful counter width
+    parameter ALLOC_THRESH = 2         // Allocation threshold
+)(
     input wire clk,
     input wire reset,
     input wire [31:0] pc,
     input wire branch_taken,
     input wire is_branch,
-    output wire prediction
+    output reg prediction,
+    output reg loop_prediction,
+    output reg use_loop_pred
 );
 
-    // Parameters
-    parameter NUM_TABLES = 5;  // Including bimodal table
-    parameter TAG_WIDTH = 12;
-    parameter COUNTER_WIDTH = 3;  // 3-bit counters for better hysteresis
-    localparam TABLE_SIZE = 1024;  // 1K entries per table
-    localparam INDEX_WIDTH = 10;   // 2^10 = 1024
+    // Derived parameters
+    localparam INDEX_WIDTH = $clog2(TABLE_SIZE);
+    localparam int HISTORY_LEN [7] = '{0, 4, 10, 20, 40, 80, 160}; // History lengths
     
-    // History lengths for each table
-    localparam int HISTORY_LEN [5] = '{0, 4, 8, 16, 32};
+    // Global history registers
+    reg [GHIST_WIDTH-1:0] global_history;
     
-    // Global history register
-    reg [63:0] global_history;
+    // Loop detection registers
+    reg [31:0] last_branch_pc [0:3];  // Last 4 branch PCs
+    reg [15:0] loop_counter [0:3];     // Loop counters
+    reg [1:0]  loop_state [0:3];       // Loop states: 00=inactive, 01=detecting, 10=active
+    reg [1:0]  loop_ptr;               // Current loop buffer pointer
+    
+    // Loop detection logic
+    wire loop_detected = (loop_state[0] == 2'b10) || 
+                         (loop_state[1] == 2'b10) || 
+                         (loop_state[2] == 2'b10) || 
+                         (loop_state[3] == 2'b10);
+    
+    // History update logic
     always @(posedge clk) begin
-        if (reset) 
-            global_history <= 0;
-        else if (is_branch)
-            global_history <= {global_history[62:0], branch_taken};
+        if (reset) begin
+            global_history <= '0;
+            for (int i = 0; i < 4; i++) begin
+                last_branch_pc[i] <= '0;
+                loop_counter[i] <= '0;
+                loop_state[i] <= 2'b00;
+            end
+            loop_ptr <= 0;
+        end
+        else if (is_branch) begin
+            // Update global history
+            global_history <= {global_history[GHIST_WIDTH-2:0], branch_taken};
+            
+            // Update loop detector
+            if (loop_state[loop_ptr] == 2'b10) begin
+                // Active loop: increment counter
+                loop_counter[loop_ptr] <= loop_counter[loop_ptr] + 1;
+                
+                // Check for loop exit
+                if (!branch_taken) begin
+                    loop_state[loop_ptr] <= 2'b00; // End loop
+                    loop_ptr <= (loop_ptr + 1) % 4; // Move to next slot
+                end
+            end
+            else if (branch_taken && (pc == last_branch_pc[loop_ptr])) begin
+                // Potential loop start
+                if (loop_state[loop_ptr] == 2'b01) begin
+                    // Second occurrence - confirm loop
+                    loop_state[loop_ptr] <= 2'b10;
+                    loop_counter[loop_ptr] <= 2;
+                end
+                else begin
+                    // First occurrence
+                    loop_state[loop_ptr] <= 2'b01;
+                    loop_counter[loop_ptr] <= 1;
+                end
+            end
+            else begin
+                // Reset detection state
+                loop_state[loop_ptr] <= 2'b00;
+            end
+            
+            // Store current PC
+            last_branch_pc[loop_ptr] <= pc;
+        end
+    end
+    
+    // Loop prediction logic
+    always_comb begin
+        loop_prediction = 1'b0;
+        use_loop_pred = 1'b0;
+        
+        // Check all loop slots
+        for (int i = 0; i < 4; i++) begin
+            if (loop_state[i] == 2'b10) begin
+                // Predict taken except when counter is multiple of 4
+                loop_prediction = (loop_counter[i][1:0] != 2'b00);
+                use_loop_pred = 1'b1;
+                break; // Use first active loop found
+            end
+        end
     end
     
     // Prediction tables
-    // Table 0: Bimodal (no tag)
-    reg [COUNTER_WIDTH-1:0] bimodal_table [0:TABLE_SIZE-1];
+    // Table 0: Bimodal
+    reg [CTR_WIDTH-1:0] bimodal_table [0:TABLE_SIZE-1];
     
-    // Tagged tables (1-4)
+    // Tagged tables
     typedef struct packed {
         logic valid; 
         logic [TAG_WIDTH-1:0] tag;
-        logic [COUNTER_WIDTH-1:0] counter;
-        logic useful;  // Useful bit for allocation policy
+        logic [CTR_WIDTH-1:0] ctr;
+        logic [USEFUL_WIDTH-1:0] useful;  // Useful counter
     } tage_entry_t;
     
     tage_entry_t tage_tables [1:NUM_TABLES-1][0:TABLE_SIZE-1];
@@ -84,11 +175,16 @@ module tage_predictor (
     always @(posedge clk) begin
         if (reset) begin
             for (i = 0; i < TABLE_SIZE; i = i + 1) begin
-                bimodal_table[i] <= 3'b010;  // Weakly taken state
+                bimodal_table[i] <= {1'b0, 1'b1, 1'b0};  // Weakly taken (3'b010)
             end
             for (j = 1; j < NUM_TABLES; j = j + 1) begin
                 for (i = 0; i < TABLE_SIZE; i = i + 1) begin
-                    tage_tables[j][i] <= '{valid: 1'b0, tag: 0, counter: 3'b010, useful: 1'b0};
+                    tage_tables[j][i] <= '{
+                        valid: 1'b0, 
+                        tag: '0, 
+                        ctr: {1'b0, 1'b1, 1'b0}, // Weakly taken
+                        useful: '0
+                    };
                 end
             end
         end
@@ -97,136 +193,145 @@ module tage_predictor (
     // Compute indices and tags
     wire [INDEX_WIDTH-1:0] base_index = pc[INDEX_WIDTH+1:2];
     
-    // Wire declarations for generate block outputs
-    wire [INDEX_WIDTH-1:0] tage_index [1:4];
-    wire [TAG_WIDTH-1:0] tage_tag [1:4];
+    // Wire declarations
+    wire [INDEX_WIDTH-1:0] tage_index [1:NUM_TABLES-1];
+    wire [TAG_WIDTH-1:0] tage_tag [1:NUM_TABLES-1];
+    wire [NUM_TABLES-1:1] tag_match;
+    wire [NUM_TABLES-1:1] tage_pred;
     
+    // Generate hash computations
     generate
         for (genvar t = 1; t < NUM_TABLES; t++) begin: table_hash
             // Effective history length
-            localparam hist_len = HISTORY_LEN[t] > 64 ? 64 : HISTORY_LEN[t];
+            localparam int hist_len = (HISTORY_LEN[t] > GHIST_WIDTH) ? 
+                                     GHIST_WIDTH : HISTORY_LEN[t];
             
-            // Calculate folded history
-            wire [63:0] history_mask = (1 << hist_len) - 1;
-            wire [63:0] masked_history = global_history & history_mask;
+            // Folded history calculation
+            reg [INDEX_WIDTH-1:0] folded_index;
+            reg [TAG_WIDTH-1:0] folded_tag;
             
-            // Fold history to INDEX_WIDTH bits
-            wire [INDEX_WIDTH-1:0] folded_history;
-            assign folded_history = 
-                masked_history[0*INDEX_WIDTH +: INDEX_WIDTH] ^
-                masked_history[1*INDEX_WIDTH +: INDEX_WIDTH] ^
-                masked_history[2*INDEX_WIDTH +: INDEX_WIDTH] ^
-                masked_history[3*INDEX_WIDTH +: INDEX_WIDTH];
+            always_comb begin
+                folded_index = '0;
+                folded_tag = '0;
+                for (int k = 0; k < hist_len; k++) begin
+                    if (k < GHIST_WIDTH) begin
+                        folded_index = folded_index ^ (global_history[k] << (k % INDEX_WIDTH));
+                        folded_tag = folded_tag ^ (global_history[k] << (k % TAG_WIDTH));
+                    end
+                end
+            end
             
-            // Index hash: PC XOR folded history
-            assign tage_index[t] = pc[INDEX_WIDTH+1:2] ^ folded_history;
+            // Index and tag computation
+            assign tage_index[t] = pc[INDEX_WIDTH+1:2] ^ folded_index;
+            assign tage_tag[t] = pc[31:18] ^ folded_tag;
             
-            // Tag hash: XOR of PC segments with folded history
-            wire [TAG_WIDTH-1:0] folded_history_tag;
-            assign folded_history_tag = 
-                masked_history[0*TAG_WIDTH +: TAG_WIDTH] ^
-                masked_history[1*TAG_WIDTH +: TAG_WIDTH] ^
-                masked_history[2*TAG_WIDTH +: TAG_WIDTH];
-            
-            assign tage_tag[t] = pc[31:20] ^ folded_history_tag;
+            // Tag matching
+            assign tag_match[t] = tage_tables[t][tage_index[t]].valid && 
+                                 (tage_tables[t][tage_index[t]].tag == tage_tag[t]);
+            assign tage_pred[t] = tage_tables[t][tage_index[t]].ctr[CTR_WIDTH-1];
         end
     endgenerate
     
     // Prediction logic
-    reg [2:0] provider;  // Provider table (0-4)
-    reg alt_pred;        // Alternate prediction
+    reg [2:0] provider;  // Provider table
+    reg [2:0] alt_provider; // Alternate provider
     
     // Base prediction
-    wire base_pred = bimodal_table[base_index][COUNTER_WIDTH-1];  // MSB = prediction
+    wire base_pred = bimodal_table[base_index][CTR_WIDTH-1];
     
-    // Tagged table predictions
-    wire [4:0] tag_match;
-    wire [4:0] tage_pred;
-    
-    generate
-        for (genvar t = 1; t < NUM_TABLES; t++) begin: table_pred
-            assign tag_match[t] = tage_tables[t][tage_index[t]].valid && 
-                                 (tage_tables[t][tage_index[t]].tag == tage_tag[t]);
-            assign tage_pred[t] = tage_tables[t][tage_index[t]].counter[COUNTER_WIDTH-1];
-        end
-    endgenerate
-    
-    // Provider selection (highest matching table)
+    // Provider selection
     always_comb begin
-        provider = 0;
-        alt_pred = base_pred;
+        provider = '0;
+        alt_provider = '0;
         
-        // Check tables from highest to lowest priority
-        if (tag_match[4]) begin
-            provider = 4;
-            // Find alternate prediction
-            if (tag_match[3]) alt_pred = tage_pred[3];
-            else if (tag_match[2]) alt_pred = tage_pred[2];
-            else if (tag_match[1]) alt_pred = tage_pred[1];
-            else alt_pred = base_pred;
+        // Find highest priority matching table
+        for (int t = NUM_TABLES-1; t >= 1; t--) begin
+            if (tag_match[t]) begin
+                provider = t;
+                break;
+            end
         end
-        else if (tag_match[3]) begin
-            provider = 3;
-            if (tag_match[2]) alt_pred = tage_pred[2];
-            else if (tag_match[1]) alt_pred = tage_pred[1];
-            else alt_pred = base_pred;
-        end
-        else if (tag_match[2]) begin
-            provider = 2;
-            if (tag_match[1]) alt_pred = tage_pred[1];
-            else alt_pred = base_pred;
-        end
-        else if (tag_match[1]) begin
-            provider = 1;
-            alt_pred = base_pred;
+        
+        // Find alternate provider
+        if (provider > 0) begin
+            for (int t = provider-1; t >= 0; t--) begin
+                if (t == 0) begin
+                    alt_provider = 0;
+                    break;
+                end
+                else if (tag_match[t]) begin
+                    alt_provider = t;
+                    break;
+                end
+            end
         end
     end
     
     // Final prediction
-    assign prediction = (provider == 0) ? base_pred : tage_pred[provider];
+    always_comb begin
+        if (use_loop_pred) begin
+            prediction = loop_prediction;
+        end
+        else if (provider == 0) begin
+            prediction = base_pred;
+        end
+        else begin
+            prediction = tage_pred[provider];
+        end
+    end
     
     // Update logic
     always @(posedge clk) begin
         if (!reset && is_branch) begin
             // Update used entry
-            if (provider == 0) begin
+            if (provider == 0 && !use_loop_pred) begin
                 // Update bimodal
-                if (branch_taken && (bimodal_table[base_index] < ((2**COUNTER_WIDTH)-1))) begin
-                    bimodal_table[base_index] <= bimodal_table[base_index] + 1;
+                if (branch_taken) begin
+                    if (bimodal_table[base_index] < (2**CTR_WIDTH)-1)
+                        bimodal_table[base_index] <= bimodal_table[base_index] + 1;
                 end
-                else if (!branch_taken && (bimodal_table[base_index] > 0)) begin
-                    bimodal_table[base_index] <= bimodal_table[base_index] - 1;
+                else begin
+                    if (bimodal_table[base_index] > 0)
+                        bimodal_table[base_index] <= bimodal_table[base_index] - 1;
                 end
             end
-            else begin
-                // Update tagged table
-                if (branch_taken && (tage_tables[provider][tage_index[provider]].counter < ((2**COUNTER_WIDTH)-1))) begin
-                    tage_tables[provider][tage_index[provider]].counter <= 
-                        tage_tables[provider][tage_index[provider]].counter + 1;
+            else if (provider > 0) begin
+                // Update tagged table counter
+                tage_entry_t entry = tage_tables[provider][tage_index[provider]];
+                
+                if (branch_taken) begin
+                    if (entry.ctr < (2**CTR_WIDTH)-1)
+                        entry.ctr = entry.ctr + 1;
                 end
-                else if (!branch_taken && (tage_tables[provider][tage_index[provider]].counter > 0)) begin
-                    tage_tables[provider][tage_index[provider]].counter <= 
-                        tage_tables[provider][tage_index[provider]].counter - 1;
+                else begin
+                    if (entry.ctr > 0)
+                        entry.ctr = entry.ctr - 1;
                 end
                 
-                // Update useful bit (only if prediction was correct and altpred was wrong)
-                if ((prediction == branch_taken) && (alt_pred != branch_taken)) begin
-                    tage_tables[provider][tage_index[provider]].useful <= 1'b1;
+                // Update useful counter
+                if (prediction == branch_taken) begin
+                    if (entry.useful < (2**USEFUL_WIDTH)-1)
+                        entry.useful = entry.useful + 1;
                 end
+                else if (entry.useful > 0) begin
+                    entry.useful = entry.useful - 1;
+                end
+                
+                tage_tables[provider][tage_index[provider]] <= entry;
             end
             
             // Allocation on misprediction
-            if (prediction != branch_taken) begin
-                // Try to allocate in a higher table
+            if (prediction != branch_taken && !use_loop_pred) begin
+                // Try to allocate in higher tables
                 for (int t = provider+1; t < NUM_TABLES; t++) begin
                     if (!tage_tables[t][tage_index[t]].valid || 
-                        !tage_tables[t][tage_index[t]].useful) begin
+                        tage_tables[t][tage_index[t]].useful < ALLOC_THRESH) begin
                         
                         tage_tables[t][tage_index[t]] <= '{
                             valid: 1'b1,
                             tag: tage_tag[t],
-                            counter: branch_taken ? 3'b111 : 3'b000,  // Strong initial state
-                            useful: 1'b0
+                            ctr: branch_taken ? (2**CTR_WIDTH)-1 : 0,
+                            useful: 0
                         };
                         break;
                     end

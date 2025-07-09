@@ -1,10 +1,10 @@
 seed: 104
 output: "mixed_hazards.s"
-codelen: 2000
+codelen: 1000
 hazard: 0.8
 weights: [0.2, 0.2, 0.2, 0.2, 0.2]
 regnum: 10
-membase: "0x1500"
+membase: "0x3000"
 max_loop_depth: 4
 loop_exit_prob: 0.2
 loop_insert_prob: 0.2

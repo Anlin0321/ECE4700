@@ -1,0 +1,2 @@
+input: output/mixed_hazards.s
+output: output/mixed_hazards.hex

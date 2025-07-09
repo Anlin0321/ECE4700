@@ -1,2170 +1,1735 @@
-lui x3, 1
+# Initialize memory base register x3
+lui x3, 2
 addi x3, x3, 0
-# LOOP 1 (depth 1, break at 5, max 8)
+
+
+# --- Starting Loop 1 (Depth: 1, break at 5, max 8) ---
 addi x5, x0, 8
 addi x1, x0, 5
 addi x2, x0, 0
 loop_start_1:
 lw x4, 992(x3)
-# LOOP 2 (depth 2, break at 4, max 9)
+
+# --- Starting Loop 2 (Depth: 2, break at 4, max 9) ---
 addi x5, x0, 9
 addi x2, x0, 4
 addi x1, x0, 0
 loop_start_2:
-# LOOP 3 (depth 3, break at 5, max 8)
+
+# --- Starting Loop 3 (Depth: 3, break at 5, max 8) ---
 addi x7, x0, 8
 addi x4, x0, 5
 addi x5, x0, 0
 loop_start_3:
 lw x1, 892(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-# LOOP 4 (depth 4, break at 5, max 7)
+beq x0, x0, skip_taken_1 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_1:
+
+# --- Starting Loop 4 (Depth: 4, break at 5, max 7) ---
 addi x5, x0, 7
 addi x4, x0, 5
 addi x7, x0, 0
 loop_start_4:
-srl x2, x7, x2
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-j loop_exit_4  # Exit loop 4
-j loop_exit_3  # Exit loop 3
+srl x2, x7, x7
+
+# --- Closing Loop 4 (Depth: 4) ---
+addi x7, x7, 1
+beq x7, x4, loop_exit_4  # Conditional break from loop
+blt x7, x5, loop_start_4 # Branch back to loop start
+loop_exit_4: # Define loop exit label
+# --- Resuming code after Loop 4 ---
+
+
+# --- Closing Loop 3 (Depth: 3) ---
+addi x5, x5, 1
+beq x5, x4, loop_exit_3  # Conditional break from loop
+blt x5, x7, loop_start_3 # Branch back to loop start
+loop_exit_3: # Define loop exit label
+# --- Resuming code after Loop 3 ---
+
+
+# --- Closing Loop 2 (Depth: 2) ---
+addi x1, x1, 1
+beq x1, x2, loop_exit_2  # Conditional break from loop
+blt x1, x5, loop_start_2 # Branch back to loop start
+loop_exit_2: # Define loop exit label
+# --- Resuming code after Loop 2 ---
+
 sw x1, 692(x3)
 lw x7, 140(x3)
 sw x6, 456(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-j loop_exit_2  # Exit loop 2
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-sub x4, x4, x4
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-j loop_exit_1  # Exit loop 1
-sw x4, 324(x3)
-# LOOP 5 (depth 1, break at 3, max 9)
-addi x2, x0, 9
-addi x1, x0, 3
-addi x6, x0, 0
+beq x0, x0, skip_taken_2 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_2:
+
+# --- Closing Loop 1 (Depth: 1) ---
+addi x2, x2, 1
+beq x2, x1, loop_exit_1  # Conditional break from loop
+blt x2, x5, loop_start_1 # Branch back to loop start
+loop_exit_1: # Define loop exit label
+# --- Resuming code after Loop 1 ---
+
+bne x0, x0, skip_nottaken_3 # Never branch
+addi x0, x0, 0  # This instruction is executed
+skip_nottaken_3:
+
+# --- Starting Loop 5 (Depth: 1, break at 5, max 8) ---
+addi x5, x0, 8
+addi x1, x0, 5
+addi x2, x0, 0
 loop_start_5:
-srl x2, x4, x2
-xor x1, x4, x1
-sw x5, 652(x3)
-j loop_exit_5  # Exit loop 1
-# LOOP 6 (depth 1, break at 1, max 5)
-addi x7, x0, 5
-addi x4, x0, 1
-addi x2, x0, 0
+
+# --- Starting Loop 6 (Depth: 2, break at 2, max 7) ---
+addi x1, x0, 7
+addi x6, x0, 2
+addi x4, x0, 0
 loop_start_6:
-sll x4, x2, x4
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-j loop_exit_6  # Exit loop 1
-# LOOP 7 (depth 1, break at 3, max 9)
-addi x5, x0, 9
-addi x7, x0, 3
-addi x1, x0, 0
+beq x0, x0, skip_taken_4 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_4:
+
+# --- Closing Loop 6 (Depth: 2) ---
+addi x4, x4, 1
+beq x4, x6, loop_exit_6  # Conditional break from loop
+blt x4, x1, loop_start_6 # Branch back to loop start
+loop_exit_6: # Define loop exit label
+# --- Resuming code after Loop 6 ---
+
+add x4, x4, x2
+xor x4, x1, x2
+add x7, x4, x2
+beq x0, x0, skip_taken_5 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_5:
+
+# --- Closing Loop 5 (Depth: 1) ---
+addi x2, x2, 1
+beq x2, x1, loop_exit_5  # Conditional break from loop
+blt x2, x5, loop_start_5 # Branch back to loop start
+loop_exit_5: # Define loop exit label
+# --- Resuming code after Loop 5 ---
+
+
+# --- Starting Loop 7 (Depth: 1, break at 2, max 8) ---
+addi x2, x0, 8
+addi x5, x0, 2
+addi x4, x0, 0
 loop_start_7:
-lw x1, 476(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-lw x2, 496(x3)
-# LOOP 8 (depth 2, break at 3, max 8)
-addi x7, x0, 8
-addi x1, x0, 3
-addi x6, x0, 0
+sw x2, 464(x3)
+beq x0, x0, skip_taken_6 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_6:
+sw x5, 680(x3)
+
+# --- Closing Loop 7 (Depth: 1) ---
+addi x4, x4, 1
+beq x4, x5, loop_exit_7  # Conditional break from loop
+blt x4, x2, loop_start_7 # Branch back to loop start
+loop_exit_7: # Define loop exit label
+# --- Resuming code after Loop 7 ---
+
+beq x0, x0, skip_taken_7 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_7:
+
+# --- Starting Loop 8 (Depth: 1, break at 4, max 9) ---
+addi x1, x0, 9
+addi x7, x0, 4
+addi x5, x0, 0
 loop_start_8:
-lw x2, 480(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-sub x1, x5, x1
-lw x7, 520(x3)
-j loop_exit_8  # Exit loop 2
-# LOOP 9 (depth 2, break at 5, max 7)
-addi x6, x0, 7
-addi x5, x0, 5
-addi x2, x0, 0
+sw x1, 36(x3)
+sll x1, x7, x6
+
+# --- Starting Loop 9 (Depth: 2, break at 4, max 5) ---
+addi x2, x0, 5
+addi x7, x0, 4
+addi x6, x0, 0
 loop_start_9:
-srl x6, x2, x6
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-j loop_exit_9  # Exit loop 2
+lw x2, 456(x3)
+sw x2, 520(x3)
+
+# --- Starting Loop 10 (Depth: 3, break at 5, max 6) ---
+addi x4, x0, 6
+addi x6, x0, 5
+addi x2, x0, 0
+loop_start_10:
+beq x0, x0, skip_taken_8 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_8:
+
+# --- Closing Loop 10 (Depth: 3) ---
+addi x2, x2, 1
+beq x2, x6, loop_exit_10  # Conditional break from loop
+blt x2, x4, loop_start_10 # Branch back to loop start
+loop_exit_10: # Define loop exit label
+# --- Resuming code after Loop 10 ---
+
+sw x6, 92(x3)
+beq x0, x0, skip_taken_9 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_9:
+
+# --- Closing Loop 9 (Depth: 2) ---
+addi x6, x6, 1
+beq x6, x7, loop_exit_9  # Conditional break from loop
+blt x6, x2, loop_start_9 # Branch back to loop start
+loop_exit_9: # Define loop exit label
+# --- Resuming code after Loop 9 ---
+
 sw x4, 292(x3)
-bne x0, x0, 8
-addi x0, x0, 0  # Executed instruction
-# LOOP 10 (depth 2, break at 3, max 9)
+bne x0, x0, skip_nottaken_10 # Never branch
+addi x0, x0, 0  # This instruction is executed
+skip_nottaken_10:
+
+# --- Starting Loop 11 (Depth: 2, break at 3, max 9) ---
 addi x1, x0, 9
 addi x2, x0, 3
 addi x4, x0, 0
-loop_start_10:
-and x5, x2, x5
-lw x2, 336(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-sll x7, x7, x7
-sw x5, 628(x3)
-sw x5, 684(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-sw x5, 44(x3)
-bne x0, x0, 8
-addi x0, x0, 0  # Executed instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-sll x5, x4, x5
-srl x2, x2, x2
-srl x1, x6, x1
-j loop_exit_10  # Exit loop 2
-or x7, x1, x7
-srl x5, x2, x5
-and x7, x1, x7
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-j loop_exit_7  # Exit loop 1
-sw x6, 520(x3)
-or x1, x2, x1
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-# LOOP 11 (depth 1, break at 2, max 5)
-addi x6, x0, 5
+loop_start_11:
+and x2, x7, x7
+beq x0, x0, skip_taken_11 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_11:
+beq x0, x0, skip_taken_12 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_12:
+lw x5, 128(x3)
+sw x5, 376(x3)
+xor x1, x6, x5
+sw x1, 872(x3)
+
+# --- Starting Loop 12 (Depth: 3, break at 1, max 5) ---
+addi x1, x0, 5
+addi x5, x0, 1
+addi x2, x0, 0
+loop_start_12:
+lw x5, 704(x3)
+bne x0, x0, skip_nottaken_13 # Never branch
+addi x0, x0, 0  # This instruction is executed
+skip_nottaken_13:
+srl x5, x2, x2
+srl x6, x1, x1
+
+# --- Starting Loop 13 (Depth: 4, break at 4, max 7) ---
+addi x2, x0, 7
+addi x4, x0, 4
+addi x5, x0, 0
+loop_start_13:
+
+# --- Closing Loop 13 (Depth: 4) ---
+addi x5, x5, 1
+beq x5, x4, loop_exit_13  # Conditional break from loop
+blt x5, x2, loop_start_13 # Branch back to loop start
+loop_exit_13: # Define loop exit label
+# --- Resuming code after Loop 13 ---
+
+beq x0, x0, skip_taken_14 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_14:
+sll x5, x5, x4
+beq x0, x0, skip_taken_15 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_15:
+sw x7, 548(x3)
+lw x2, 932(x3)
+beq x0, x0, skip_taken_16 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_16:
+beq x0, x0, skip_taken_17 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_17:
+
+# --- Closing Loop 12 (Depth: 3) ---
+addi x2, x2, 1
+beq x2, x5, loop_exit_12  # Conditional break from loop
+blt x2, x1, loop_start_12 # Branch back to loop start
+loop_exit_12: # Define loop exit label
+# --- Resuming code after Loop 12 ---
+
+sll x2, x7, x7
+
+# --- Closing Loop 11 (Depth: 2) ---
+addi x4, x4, 1
+beq x4, x2, loop_exit_11  # Conditional break from loop
+blt x4, x1, loop_start_11 # Branch back to loop start
+loop_exit_11: # Define loop exit label
+# --- Resuming code after Loop 11 ---
+
+
+# --- Closing Loop 8 (Depth: 1) ---
+addi x5, x5, 1
+beq x5, x7, loop_exit_8  # Conditional break from loop
+blt x5, x1, loop_start_8 # Branch back to loop start
+loop_exit_8: # Define loop exit label
+# --- Resuming code after Loop 8 ---
+
+lw x1, 620(x3)
+beq x0, x0, skip_taken_18 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_18:
+
+# --- Starting Loop 14 (Depth: 1, break at 2, max 10) ---
+addi x6, x0, 10
 addi x4, x0, 2
 addi x2, x0, 0
-loop_start_11:
-# LOOP 12 (depth 2, break at 2, max 3)
-addi x5, x0, 3
-addi x7, x0, 2
-addi x4, x0, 0
-loop_start_12:
-add x2, x4, x2
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-j loop_exit_12  # Exit loop 2
-# LOOP 13 (depth 2, break at 3, max 5)
-addi x4, x0, 5
-addi x5, x0, 3
-addi x7, x0, 0
-loop_start_13:
-or x2, x7, x2
-j loop_exit_13  # Exit loop 2
-srl x4, x5, x4
-# LOOP 14 (depth 2, break at 1, max 8)
-addi x7, x0, 8
-addi x5, x0, 1
-addi x1, x0, 0
 loop_start_14:
-lw x7, 628(x3)
-j loop_exit_14  # Exit loop 2
-sll x1, x4, x1
-j loop_exit_11  # Exit loop 1
-lw x1, 204(x3)
-lw x6, 492(x3)
-# LOOP 15 (depth 1, break at 3, max 5)
-addi x7, x0, 5
-addi x2, x0, 3
-addi x4, x0, 0
+
+# --- Closing Loop 14 (Depth: 1) ---
+addi x2, x2, 1
+beq x2, x4, loop_exit_14  # Conditional break from loop
+blt x2, x6, loop_start_14 # Branch back to loop start
+loop_exit_14: # Define loop exit label
+# --- Resuming code after Loop 14 ---
+
+beq x0, x0, skip_taken_19 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_19:
+
+# --- Starting Loop 15 (Depth: 1, break at 2, max 9) ---
+addi x4, x0, 9
+addi x5, x0, 2
+addi x7, x0, 0
 loop_start_15:
-sll x7, x1, x7
-bne x0, x0, 8
-addi x0, x0, 0  # Executed instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
+or x2, x7, x4
+
+# --- Closing Loop 15 (Depth: 1) ---
+addi x7, x7, 1
+beq x7, x5, loop_exit_15  # Conditional break from loop
+blt x7, x4, loop_start_15 # Branch back to loop start
+loop_exit_15: # Define loop exit label
+# --- Resuming code after Loop 15 ---
+
+
+# --- Starting Loop 16 (Depth: 1, break at 4, max 6) ---
+addi x5, x0, 6
+addi x7, x0, 4
+addi x1, x0, 0
+loop_start_16:
+lw x7, 360(x3)
+sw x4, 800(x3)
+
+# --- Closing Loop 16 (Depth: 1) ---
+addi x1, x1, 1
+beq x1, x7, loop_exit_16  # Conditional break from loop
+blt x1, x5, loop_start_16 # Branch back to loop start
+loop_exit_16: # Define loop exit label
+# --- Resuming code after Loop 16 ---
+
+bne x0, x0, skip_nottaken_20 # Never branch
+addi x0, x0, 0  # This instruction is executed
+skip_nottaken_20:
+srl x7, x6, x5
+
+# --- Starting Loop 17 (Depth: 1, break at 3, max 5) ---
+addi x1, x0, 5
+addi x5, x0, 3
+addi x6, x0, 0
+loop_start_17:
+sw x4, 68(x3)
+lw x1, 712(x3)
+bne x0, x0, skip_nottaken_21 # Never branch
+addi x0, x0, 0  # This instruction is executed
+skip_nottaken_21:
+beq x0, x0, skip_taken_22 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_22:
+beq x0, x0, skip_taken_23 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_23:
 lw x2, 924(x3)
 lw x6, 104(x3)
-j loop_exit_15  # Exit loop 1
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-# LOOP 16 (depth 1, break at 4, max 10)
+
+# --- Closing Loop 17 (Depth: 1) ---
+addi x6, x6, 1
+beq x6, x5, loop_exit_17  # Conditional break from loop
+blt x6, x1, loop_start_17 # Branch back to loop start
+loop_exit_17: # Define loop exit label
+# --- Resuming code after Loop 17 ---
+
+beq x0, x0, skip_taken_24 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_24:
+
+# --- Starting Loop 18 (Depth: 1, break at 4, max 10) ---
 addi x7, x0, 10
 addi x2, x0, 4
 addi x5, x0, 0
-loop_start_16:
-add x4, x1, x4
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-sw x1, 312(x3)
-# LOOP 17 (depth 2, break at 1, max 5)
-addi x2, x0, 5
-addi x1, x0, 1
-addi x6, x0, 0
-loop_start_17:
-# LOOP 18 (depth 3, break at 3, max 10)
-addi x5, x0, 10
-addi x4, x0, 3
-addi x7, x0, 0
 loop_start_18:
-j loop_exit_18  # Exit loop 3
-lw x7, 428(x3)
-j loop_exit_17  # Exit loop 2
-# LOOP 19 (depth 2, break at 5, max 7)
-addi x2, x0, 7
-addi x5, x0, 5
-addi x6, x0, 0
+add x1, x6, x6
+lw x5, 80(x3)
+lw x2, 716(x3)
+
+# --- Closing Loop 18 (Depth: 1) ---
+addi x5, x5, 1
+beq x5, x2, loop_exit_18  # Conditional break from loop
+blt x5, x7, loop_start_18 # Branch back to loop start
+loop_exit_18: # Define loop exit label
+# --- Resuming code after Loop 18 ---
+
+bne x0, x0, skip_nottaken_25 # Never branch
+addi x0, x0, 0  # This instruction is executed
+skip_nottaken_25:
+lw x5, 844(x3)
+sw x7, 424(x3)
+
+# --- Starting Loop 19 (Depth: 1, break at 1, max 6) ---
+addi x4, x0, 6
+addi x6, x0, 1
+addi x5, x0, 0
 loop_start_19:
-sw x6, 696(x3)
-lw x7, 656(x3)
-lw x2, 356(x3)
-# LOOP 20 (depth 3, break at 1, max 4)
+
+# --- Closing Loop 19 (Depth: 1) ---
+addi x5, x5, 1
+beq x5, x6, loop_exit_19  # Conditional break from loop
+blt x5, x4, loop_start_19 # Branch back to loop start
+loop_exit_19: # Define loop exit label
+# --- Resuming code after Loop 19 ---
+
+
+# --- Starting Loop 20 (Depth: 1, break at 1, max 5) ---
+addi x1, x0, 5
+addi x6, x0, 1
+addi x2, x0, 0
+loop_start_20:
+bne x0, x0, skip_nottaken_26 # Never branch
+addi x0, x0, 0  # This instruction is executed
+skip_nottaken_26:
+beq x0, x0, skip_taken_27 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_27:
+sw x7, 980(x3)
+
+# --- Starting Loop 21 (Depth: 2, break at 2, max 7) ---
+addi x1, x0, 7
+addi x2, x0, 2
+addi x4, x0, 0
+loop_start_21:
+
+# --- Starting Loop 22 (Depth: 3, break at 1, max 4) ---
 addi x5, x0, 4
 addi x6, x0, 1
 addi x1, x0, 0
-loop_start_20:
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-bne x0, x0, 8
-addi x0, x0, 0  # Executed instruction
-lw x6, 28(x3)
-srl x7, x2, x7
-lw x2, 108(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-sll x4, x1, x4
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-sw x4, 888(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-or x6, x2, x6
-j loop_exit_20  # Exit loop 3
-j loop_exit_19  # Exit loop 2
-# LOOP 21 (depth 2, break at 2, max 9)
-addi x7, x0, 9
-addi x2, x0, 2
-addi x1, x0, 0
-loop_start_21:
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-lw x5, 588(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-lw x7, 36(x3)
-lw x2, 456(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-sw x4, 236(x3)
-j loop_exit_21  # Exit loop 2
-lw x6, 504(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-# LOOP 22 (depth 2, break at 2, max 10)
-addi x1, x0, 10
-addi x4, x0, 2
-addi x2, x0, 0
 loop_start_22:
-srl x6, x4, x6
-j loop_exit_22  # Exit loop 2
-# LOOP 23 (depth 2, break at 5, max 6)
-addi x2, x0, 6
-addi x5, x0, 5
+beq x0, x0, skip_taken_28 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_28:
+bne x0, x0, skip_nottaken_29 # Never branch
+addi x0, x0, 0  # This instruction is executed
+skip_nottaken_29:
+lw x2, 524(x3)
+
+# --- Closing Loop 22 (Depth: 3) ---
+addi x1, x1, 1
+beq x1, x6, loop_exit_22  # Conditional break from loop
+blt x1, x5, loop_start_22 # Branch back to loop start
+loop_exit_22: # Define loop exit label
+# --- Resuming code after Loop 22 ---
+
+sub x7, x2, x4
+beq x0, x0, skip_taken_30 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_30:
+beq x0, x0, skip_taken_31 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_31:
+lw x6, 732(x3)
+add x1, x6, x4
+add x7, x5, x2
+
+# --- Starting Loop 23 (Depth: 3, break at 4, max 6) ---
+addi x4, x0, 6
+addi x6, x0, 4
 addi x1, x0, 0
 loop_start_23:
-j loop_exit_23  # Exit loop 2
-or x1, x1, x1
-sub x4, x1, x4
-sll x7, x6, x7
-# LOOP 24 (depth 2, break at 4, max 10)
-addi x1, x0, 10
-addi x2, x0, 4
+beq x0, x0, skip_taken_32 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_32:
+lw x6, 804(x3)
+beq x0, x0, skip_taken_33 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_33:
+
+# --- Starting Loop 24 (Depth: 4, break at 2, max 4) ---
+addi x5, x0, 4
+addi x7, x0, 2
 addi x4, x0, 0
 loop_start_24:
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-sw x7, 616(x3)
-lw x2, 724(x3)
-# LOOP 25 (depth 3, break at 2, max 9)
-addi x7, x0, 9
-addi x5, x0, 2
-addi x4, x0, 0
-loop_start_25:
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-j loop_exit_25  # Exit loop 3
-sw x5, 260(x3)
-sll x5, x6, x5
-bne x0, x0, 8
-addi x0, x0, 0  # Executed instruction
-bne x0, x0, 8
-addi x0, x0, 0  # Executed instruction
-or x6, x6, x6
-# LOOP 26 (depth 3, break at 1, max 2)
-addi x1, x0, 2
-addi x7, x0, 1
-addi x2, x0, 0
-loop_start_26:
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-# LOOP 27 (depth 4, break at 3, max 7)
-addi x4, x0, 7
-addi x6, x0, 3
-addi x7, x0, 0
-loop_start_27:
-sw x1, 136(x3)
-lw x5, 148(x3)
-lw x7, 776(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-add x2, x6, x2
-sw x4, 428(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-and x5, x7, x5
-sw x4, 560(x3)
-xor x4, x4, x4
-sub x5, x6, x5
-j loop_exit_27  # Exit loop 4
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-xor x5, x5, x5
-# LOOP 28 (depth 4, break at 2, max 3)
-addi x6, x0, 3
+
+# --- Closing Loop 24 (Depth: 4) ---
+addi x4, x4, 1
+beq x4, x7, loop_exit_24  # Conditional break from loop
+blt x4, x5, loop_start_24 # Branch back to loop start
+loop_exit_24: # Define loop exit label
+# --- Resuming code after Loop 24 ---
+
+lw x5, 588(x3)
+beq x0, x0, skip_taken_34 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_34:
+lw x7, 36(x3)
+lw x2, 456(x3)
+beq x0, x0, skip_taken_35 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_35:
+beq x0, x0, skip_taken_36 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_36:
+beq x0, x0, skip_taken_37 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_37:
+sw x5, 236(x3)
+
+# --- Closing Loop 23 (Depth: 3) ---
+addi x1, x1, 1
+beq x1, x6, loop_exit_23  # Conditional break from loop
+blt x1, x4, loop_start_23 # Branch back to loop start
+loop_exit_23: # Define loop exit label
+# --- Resuming code after Loop 23 ---
+
+lw x6, 504(x3)
+beq x0, x0, skip_taken_38 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_38:
+beq x0, x0, skip_taken_39 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_39:
+beq x0, x0, skip_taken_40 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_40:
+
+# --- Starting Loop 25 (Depth: 3, break at 2, max 10) ---
+addi x1, x0, 10
 addi x4, x0, 2
 addi x2, x0, 0
+loop_start_25:
+srl x4, x1, x1
+sw x1, 184(x3)
+sw x4, 268(x3)
+sw x5, 68(x3)
+sw x5, 152(x3)
+or x7, x6, x6
+or x7, x1, x2
+srl x1, x2, x5
+and x6, x7, x4
+
+# --- Closing Loop 25 (Depth: 3) ---
+addi x2, x2, 1
+beq x2, x4, loop_exit_25  # Conditional break from loop
+blt x2, x1, loop_start_25 # Branch back to loop start
+loop_exit_25: # Define loop exit label
+# --- Resuming code after Loop 25 ---
+
+beq x0, x0, skip_taken_41 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_41:
+sll x6, x7, x5
+sw x1, 556(x3)
+
+# --- Closing Loop 21 (Depth: 2) ---
+addi x4, x4, 1
+beq x4, x2, loop_exit_21  # Conditional break from loop
+blt x4, x1, loop_start_21 # Branch back to loop start
+loop_exit_21: # Define loop exit label
+# --- Resuming code after Loop 21 ---
+
+
+# --- Closing Loop 20 (Depth: 1) ---
+addi x2, x2, 1
+beq x2, x6, loop_exit_20  # Conditional break from loop
+blt x2, x1, loop_start_20 # Branch back to loop start
+loop_exit_20: # Define loop exit label
+# --- Resuming code after Loop 20 ---
+
+srl x2, x6, x5
+sll x6, x7, x1
+bne x0, x0, skip_nottaken_42 # Never branch
+addi x0, x0, 0  # This instruction is executed
+skip_nottaken_42:
+xor x2, x7, x7
+lw x6, 732(x3)
+sw x1, 4(x3)
+
+# --- Starting Loop 26 (Depth: 1, break at 1, max 5) ---
+addi x5, x0, 5
+addi x2, x0, 1
+addi x4, x0, 0
+loop_start_26:
+
+# --- Closing Loop 26 (Depth: 1) ---
+addi x4, x4, 1
+beq x4, x2, loop_exit_26  # Conditional break from loop
+blt x4, x5, loop_start_26 # Branch back to loop start
+loop_exit_26: # Define loop exit label
+# --- Resuming code after Loop 26 ---
+
+beq x0, x0, skip_taken_43 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_43:
+
+# --- Starting Loop 27 (Depth: 1, break at 3, max 7) ---
+addi x1, x0, 7
+addi x2, x0, 3
+addi x7, x0, 0
+loop_start_27:
+lw x5, 412(x3)
+beq x0, x0, skip_taken_44 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_44:
+beq x0, x0, skip_taken_45 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_45:
+sub x4, x7, x2
+sw x4, 152(x3)
+beq x0, x0, skip_taken_46 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_46:
+beq x0, x0, skip_taken_47 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_47:
+beq x0, x0, skip_taken_48 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_48:
+sub x6, x5, x2
+
+# --- Starting Loop 28 (Depth: 2, break at 1, max 2) ---
+addi x4, x0, 2
+addi x5, x0, 1
+addi x7, x0, 0
 loop_start_28:
-sw x2, 504(x3)
-lw x7, 224(x3)
-sw x6, 360(x3)
-lw x2, 672(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-xor x1, x4, x1
-sub x2, x1, x2
-sll x1, x7, x1
-sw x4, 764(x3)
-and x5, x6, x5
-sll x7, x7, x7
-sll x4, x7, x4
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-lw x6, 104(x3)
-j loop_exit_28  # Exit loop 4
-lw x2, 876(x3)
-lw x1, 996(x3)
-j loop_exit_26  # Exit loop 3
-lw x4, 560(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-# LOOP 29 (depth 3, break at 5, max 6)
-addi x6, x0, 6
-addi x2, x0, 5
-addi x5, x0, 0
+beq x0, x0, skip_taken_49 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_49:
+
+# --- Closing Loop 28 (Depth: 2) ---
+addi x7, x7, 1
+beq x7, x5, loop_exit_28  # Conditional break from loop
+blt x7, x4, loop_start_28 # Branch back to loop start
+loop_exit_28: # Define loop exit label
+# --- Resuming code after Loop 28 ---
+
+sw x5, 608(x3)
+and x6, x1, x4
+lw x7, 628(x3)
+
+# --- Closing Loop 27 (Depth: 1) ---
+addi x7, x7, 1
+beq x7, x2, loop_exit_27  # Conditional break from loop
+blt x7, x1, loop_start_27 # Branch back to loop start
+loop_exit_27: # Define loop exit label
+# --- Resuming code after Loop 27 ---
+
+beq x0, x0, skip_taken_50 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_50:
+bne x0, x0, skip_nottaken_51 # Never branch
+addi x0, x0, 0  # This instruction is executed
+skip_nottaken_51:
+
+# --- Starting Loop 29 (Depth: 1, break at 2, max 8) ---
+addi x1, x0, 8
+addi x4, x0, 2
+addi x6, x0, 0
 loop_start_29:
-lw x2, 292(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-or x1, x2, x1
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-# LOOP 30 (depth 4, break at 4, max 10)
-addi x5, x0, 10
+or x5, x2, x7
+beq x0, x0, skip_taken_52 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_52:
+sw x4, 944(x3)
+
+# --- Closing Loop 29 (Depth: 1) ---
+addi x6, x6, 1
+beq x6, x4, loop_exit_29  # Conditional break from loop
+blt x6, x1, loop_start_29 # Branch back to loop start
+loop_exit_29: # Define loop exit label
+# --- Resuming code after Loop 29 ---
+
+beq x0, x0, skip_taken_53 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_53:
+lw x7, 840(x3)
+beq x0, x0, skip_taken_54 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_54:
+beq x0, x0, skip_taken_55 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_55:
+beq x0, x0, skip_taken_56 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_56:
+or x7, x1, x2
+beq x0, x0, skip_taken_57 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_57:
+srl x1, x7, x2
+beq x0, x0, skip_taken_58 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_58:
+beq x0, x0, skip_taken_59 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_59:
+beq x0, x0, skip_taken_60 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_60:
+lw x6, 732(x3)
+beq x0, x0, skip_taken_61 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_61:
+lw x7, 252(x3)
+sw x7, 108(x3)
+beq x0, x0, skip_taken_62 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_62:
+
+# --- Starting Loop 30 (Depth: 1, break at 4, max 8) ---
+addi x1, x0, 8
 addi x4, x0, 4
 addi x6, x0, 0
 loop_start_30:
-bne x0, x0, 8
-addi x0, x0, 0  # Executed instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-lw x1, 448(x3)
-j loop_exit_30  # Exit loop 4
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-xor x5, x2, x5
-j loop_exit_29  # Exit loop 3
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-sw x7, 836(x3)
-sw x7, 316(x3)
-sw x7, 140(x3)
-j loop_exit_24  # Exit loop 2
-xor x1, x2, x1
-j loop_exit_16  # Exit loop 1
-# LOOP 31 (depth 1, break at 5, max 6)
-addi x4, x0, 6
-addi x2, x0, 5
-addi x7, x0, 0
+
+# --- Closing Loop 30 (Depth: 1) ---
+addi x6, x6, 1
+beq x6, x4, loop_exit_30  # Conditional break from loop
+blt x6, x1, loop_start_30 # Branch back to loop start
+loop_exit_30: # Define loop exit label
+# --- Resuming code after Loop 30 ---
+
+
+# --- Starting Loop 31 (Depth: 1, break at 4, max 5) ---
+addi x7, x0, 5
+addi x4, x0, 4
+addi x2, x0, 0
 loop_start_31:
-sw x5, 600(x3)
-lw x1, 260(x3)
-j loop_exit_31  # Exit loop 1
-# LOOP 32 (depth 1, break at 2, max 7)
-addi x6, x0, 7
-addi x4, x0, 2
-addi x5, x0, 0
+xor x5, x6, x7
+or x1, x7, x2
+beq x0, x0, skip_taken_63 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_63:
+beq x0, x0, skip_taken_64 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_64:
+add x4, x6, x2
+sll x2, x6, x6
+sll x7, x2, x2
+xor x2, x7, x6
+sw x2, 16(x3)
+
+# --- Closing Loop 31 (Depth: 1) ---
+addi x2, x2, 1
+beq x2, x4, loop_exit_31  # Conditional break from loop
+blt x2, x7, loop_start_31 # Branch back to loop start
+loop_exit_31: # Define loop exit label
+# --- Resuming code after Loop 31 ---
+
+bne x0, x0, skip_nottaken_65 # Never branch
+addi x0, x0, 0  # This instruction is executed
+skip_nottaken_65:
+
+# --- Starting Loop 32 (Depth: 1, break at 2, max 4) ---
+addi x7, x0, 4
+addi x5, x0, 2
+addi x2, x0, 0
 loop_start_32:
-# LOOP 33 (depth 2, break at 1, max 4)
-addi x4, x0, 4
-addi x6, x0, 1
-addi x7, x0, 0
+
+# --- Starting Loop 33 (Depth: 2, break at 1, max 6) ---
+addi x6, x0, 6
+addi x4, x0, 1
+addi x5, x0, 0
 loop_start_33:
-lw x4, 720(x3)
-sll x6, x5, x6
-sw x1, 224(x3)
-srl x7, x5, x7
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-lw x2, 588(x3)
-or x6, x4, x6
-j loop_exit_33  # Exit loop 2
-# LOOP 34 (depth 2, break at 4, max 6)
-addi x7, x0, 6
+
+# --- Starting Loop 34 (Depth: 3, break at 1, max 4) ---
 addi x4, x0, 4
-addi x2, x0, 0
-loop_start_34:
-# LOOP 35 (depth 3, break at 5, max 9)
-addi x7, x0, 9
-addi x6, x0, 5
-addi x1, x0, 0
-loop_start_35:
-sll x5, x4, x5
-sw x7, 168(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-j loop_exit_35  # Exit loop 3
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-srl x7, x4, x7
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-sw x7, 360(x3)
-j loop_exit_34  # Exit loop 2
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-lw x5, 560(x3)
-and x7, x1, x7
-and x4, x7, x4
-add x4, x4, x4
-bne x0, x0, 8
-addi x0, x0, 0  # Executed instruction
-# LOOP 36 (depth 2, break at 3, max 4)
-addi x1, x0, 4
-addi x5, x0, 3
-addi x7, x0, 0
-loop_start_36:
-and x5, x6, x5
-j loop_exit_36  # Exit loop 2
-# LOOP 37 (depth 2, break at 3, max 7)
-addi x2, x0, 7
-addi x7, x0, 3
-addi x4, x0, 0
-loop_start_37:
-and x7, x2, x7
-srl x1, x7, x1
-sub x4, x4, x4
-j loop_exit_37  # Exit loop 2
-# LOOP 38 (depth 2, break at 1, max 8)
-addi x6, x0, 8
-addi x5, x0, 1
-addi x7, x0, 0
-loop_start_38:
-sw x7, 804(x3)
-# LOOP 39 (depth 3, break at 3, max 7)
-addi x2, x0, 7
-addi x4, x0, 3
-addi x5, x0, 0
-loop_start_39:
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-j loop_exit_39  # Exit loop 3
-sw x7, 412(x3)
-# LOOP 40 (depth 3, break at 4, max 7)
-addi x4, x0, 7
-addi x2, x0, 4
-addi x6, x0, 0
-loop_start_40:
-bne x0, x0, 8
-addi x0, x0, 0  # Executed instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-j loop_exit_40  # Exit loop 3
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-# LOOP 41 (depth 3, break at 2, max 8)
-addi x7, x0, 8
-addi x1, x0, 2
-addi x5, x0, 0
-loop_start_41:
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-sll x6, x1, x6
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-srl x1, x4, x1
-or x4, x6, x4
-lw x6, 444(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-sw x7, 776(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-add x2, x5, x2
-and x5, x1, x5
-and x4, x2, x4
-j loop_exit_41  # Exit loop 3
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-add x7, x5, x7
-sll x5, x4, x5
-sll x1, x1, x1
-j loop_exit_38  # Exit loop 2
-lw x6, 412(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-j loop_exit_32  # Exit loop 1
-or x1, x6, x1
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-or x4, x5, x4
-# LOOP 42 (depth 1, break at 5, max 9)
-addi x7, x0, 9
-addi x6, x0, 5
-addi x2, x0, 0
-loop_start_42:
-# LOOP 43 (depth 2, break at 5, max 8)
-addi x6, x0, 8
-addi x4, x0, 5
-addi x1, x0, 0
-loop_start_43:
-# LOOP 44 (depth 3, break at 3, max 6)
-addi x5, x0, 6
-addi x2, x0, 3
-addi x4, x0, 0
-loop_start_44:
-lw x5, 780(x3)
-j loop_exit_44  # Exit loop 3
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-bne x0, x0, 8
-addi x0, x0, 0  # Executed instruction
-bne x0, x0, 8
-addi x0, x0, 0  # Executed instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-sub x2, x5, x2
-or x1, x4, x1
-lw x5, 176(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-j loop_exit_43  # Exit loop 2
-# LOOP 45 (depth 2, break at 1, max 9)
-addi x1, x0, 9
-addi x2, x0, 1
-addi x6, x0, 0
-loop_start_45:
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-and x7, x2, x7
-xor x5, x1, x5
-sub x5, x5, x5
-# LOOP 46 (depth 3, break at 1, max 2)
-addi x4, x0, 2
 addi x6, x0, 1
-addi x2, x0, 0
-loop_start_46:
-j loop_exit_46  # Exit loop 3
-j loop_exit_45  # Exit loop 2
-sw x5, 748(x3)
-or x1, x4, x1
-or x7, x1, x7
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-j loop_exit_42  # Exit loop 1
-or x6, x4, x6
-and x4, x2, x4
-# LOOP 47 (depth 1, break at 1, max 6)
-addi x6, x0, 6
-addi x2, x0, 1
-addi x1, x0, 0
-loop_start_47:
-srl x7, x1, x7
-# LOOP 48 (depth 2, break at 1, max 7)
-addi x1, x0, 7
-addi x5, x0, 1
-addi x6, x0, 0
-loop_start_48:
-# LOOP 49 (depth 3, break at 1, max 3)
-addi x7, x0, 3
-addi x4, x0, 1
-addi x2, x0, 0
-loop_start_49:
-j loop_exit_49  # Exit loop 3
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-# LOOP 50 (depth 3, break at 2, max 4)
-addi x1, x0, 4
-addi x5, x0, 2
 addi x7, x0, 0
-loop_start_50:
-sll x1, x2, x1
-sw x1, 852(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-sw x7, 208(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-sll x2, x2, x2
-j loop_exit_50  # Exit loop 3
-j loop_exit_48  # Exit loop 2
-# LOOP 51 (depth 2, break at 3, max 9)
-addi x7, x0, 9
-addi x5, x0, 3
-addi x4, x0, 0
-loop_start_51:
-j loop_exit_51  # Exit loop 2
-sw x5, 412(x3)
-# LOOP 52 (depth 2, break at 1, max 3)
-addi x1, x0, 3
-addi x7, x0, 1
-addi x5, x0, 0
-loop_start_52:
-j loop_exit_52  # Exit loop 2
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-j loop_exit_47  # Exit loop 1
-# LOOP 53 (depth 1, break at 3, max 4)
-addi x2, x0, 4
-addi x7, x0, 3
-addi x4, x0, 0
-loop_start_53:
-lw x5, 296(x3)
-# LOOP 54 (depth 2, break at 2, max 10)
-addi x4, x0, 10
-addi x6, x0, 2
-addi x1, x0, 0
-loop_start_54:
-bne x0, x0, 8
-addi x0, x0, 0  # Executed instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-sub x6, x1, x6
-# LOOP 55 (depth 3, break at 3, max 8)
-addi x4, x0, 8
-addi x7, x0, 3
-addi x2, x0, 0
-loop_start_55:
-sw x5, 752(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-or x6, x5, x6
-j loop_exit_55  # Exit loop 3
-bne x0, x0, 8
-addi x0, x0, 0  # Executed instruction
-j loop_exit_54  # Exit loop 2
-# LOOP 56 (depth 2, break at 2, max 3)
-addi x2, x0, 3
-addi x7, x0, 2
-addi x5, x0, 0
-loop_start_56:
-bne x0, x0, 8
-addi x0, x0, 0  # Executed instruction
-add x1, x2, x1
-add x7, x7, x7
-lw x7, 984(x3)
-and x1, x2, x1
-bne x0, x0, 8
-addi x0, x0, 0  # Executed instruction
-and x5, x1, x5
-sw x7, 868(x3)
-lw x1, 76(x3)
-j loop_exit_56  # Exit loop 2
-j loop_exit_53  # Exit loop 1
-sw x1, 656(x3)
-sub x7, x4, x7
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-# LOOP 57 (depth 1, break at 1, max 8)
-addi x1, x0, 8
-addi x4, x0, 1
-addi x2, x0, 0
-loop_start_57:
-sw x5, 32(x3)
-sll x5, x6, x5
-# LOOP 58 (depth 2, break at 4, max 5)
-addi x4, x0, 5
-addi x2, x0, 4
-addi x7, x0, 0
-loop_start_58:
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-# LOOP 59 (depth 3, break at 3, max 5)
-addi x2, x0, 5
-addi x4, x0, 3
-addi x1, x0, 0
-loop_start_59:
-# LOOP 60 (depth 4, break at 2, max 4)
-addi x2, x0, 4
-addi x7, x0, 2
-addi x5, x0, 0
-loop_start_60:
-j loop_exit_60  # Exit loop 4
-# LOOP 61 (depth 4, break at 3, max 7)
-addi x1, x0, 7
-addi x4, x0, 3
-addi x7, x0, 0
-loop_start_61:
-sw x4, 816(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-srl x6, x5, x6
-srl x1, x2, x1
-sw x1, 952(x3)
-sw x5, 676(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-j loop_exit_61  # Exit loop 4
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-j loop_exit_59  # Exit loop 3
-bne x0, x0, 8
-addi x0, x0, 0  # Executed instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-lw x2, 332(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-lw x5, 56(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-j loop_exit_58  # Exit loop 2
-and x4, x1, x4
-add x2, x7, x2
-j loop_exit_57  # Exit loop 1
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-# LOOP 62 (depth 1, break at 3, max 10)
-addi x5, x0, 10
-addi x1, x0, 3
-addi x6, x0, 0
-loop_start_62:
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-# LOOP 63 (depth 2, break at 2, max 9)
-addi x2, x0, 9
-addi x5, x0, 2
-addi x1, x0, 0
-loop_start_63:
-# LOOP 64 (depth 3, break at 2, max 3)
-addi x2, x0, 3
-addi x6, x0, 2
-addi x4, x0, 0
-loop_start_64:
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-or x1, x5, x1
-srl x4, x1, x4
-lw x2, 444(x3)
-lw x2, 528(x3)
-sw x2, 672(x3)
-or x4, x7, x4
-sll x1, x4, x1
-j loop_exit_64  # Exit loop 3
-j loop_exit_63  # Exit loop 2
-and x4, x7, x4
-lw x4, 300(x3)
-or x4, x4, x4
-sw x4, 532(x3)
-sw x5, 708(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-j loop_exit_62  # Exit loop 1
-sw x2, 548(x3)
-sw x7, 504(x3)
-# LOOP 65 (depth 1, break at 1, max 5)
+loop_start_34:
+lw x4, 720(x3)
+sll x5, x1, x6
+
+# --- Closing Loop 34 (Depth: 3) ---
+addi x7, x7, 1
+beq x7, x6, loop_exit_34  # Conditional break from loop
+blt x7, x4, loop_start_34 # Branch back to loop start
+loop_exit_34: # Define loop exit label
+# --- Resuming code after Loop 34 ---
+
+
+# --- Closing Loop 33 (Depth: 2) ---
+addi x5, x5, 1
+beq x5, x4, loop_exit_33  # Conditional break from loop
+blt x5, x6, loop_start_33 # Branch back to loop start
+loop_exit_33: # Define loop exit label
+# --- Resuming code after Loop 33 ---
+
+srl x6, x5, x5
+beq x0, x0, skip_taken_66 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_66:
+lw x7, 992(x3)
+or x5, x1, x6
+add x4, x1, x1
+beq x0, x0, skip_taken_67 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_67:
+add x1, x6, x5
+
+# --- Starting Loop 35 (Depth: 2, break at 5, max 9) ---
+addi x5, x0, 9
 addi x6, x0, 5
-addi x2, x0, 1
 addi x7, x0, 0
-loop_start_65:
-# LOOP 66 (depth 2, break at 1, max 2)
-addi x4, x0, 2
+loop_start_35:
+or x4, x5, x2
+
+# --- Starting Loop 36 (Depth: 3, break at 1, max 2) ---
+addi x6, x0, 2
 addi x5, x0, 1
 addi x2, x0, 0
-loop_start_66:
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-bne x0, x0, 8
-addi x0, x0, 0  # Executed instruction
-sub x4, x1, x4
-# LOOP 67 (depth 3, break at 3, max 7)
-addi x1, x0, 7
-addi x7, x0, 3
-addi x2, x0, 0
-loop_start_67:
-sll x2, x2, x2
-j loop_exit_67  # Exit loop 3
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-add x4, x2, x4
-j loop_exit_66  # Exit loop 2
-sub x5, x7, x5
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-sub x7, x6, x7
-lw x5, 540(x3)
-sw x2, 712(x3)
-j loop_exit_65  # Exit loop 1
-# LOOP 68 (depth 1, break at 5, max 6)
-addi x4, x0, 6
-addi x7, x0, 5
-addi x2, x0, 0
-loop_start_68:
-sw x5, 136(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-lw x7, 252(x3)
-j loop_exit_68  # Exit loop 1
-bne x0, x0, 8
-addi x0, x0, 0  # Executed instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-lw x1, 284(x3)
-sll x7, x5, x7
-# LOOP 69 (depth 1, break at 3, max 6)
-addi x6, x0, 6
+loop_start_36:
+srl x4, x2, x1
+beq x0, x0, skip_taken_68 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_68:
+beq x0, x0, skip_taken_69 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_69:
+
+# --- Closing Loop 36 (Depth: 3) ---
+addi x2, x2, 1
+beq x2, x5, loop_exit_36  # Conditional break from loop
+blt x2, x6, loop_start_36 # Branch back to loop start
+loop_exit_36: # Define loop exit label
+# --- Resuming code after Loop 36 ---
+
+beq x0, x0, skip_taken_70 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_70:
+lw x5, 560(x3)
+and x1, x2, x6
+
+# --- Closing Loop 35 (Depth: 2) ---
+addi x7, x7, 1
+beq x7, x6, loop_exit_35  # Conditional break from loop
+blt x7, x5, loop_start_35 # Branch back to loop start
+loop_exit_35: # Define loop exit label
+# --- Resuming code after Loop 35 ---
+
+sw x2, 228(x3)
+add x4, x1, x6
+
+# --- Starting Loop 37 (Depth: 2, break at 3, max 4) ---
+addi x1, x0, 4
 addi x5, x0, 3
-addi x2, x0, 0
-loop_start_69:
-sll x4, x5, x4
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-add x5, x7, x5
-sll x6, x2, x6
-add x4, x2, x4
-j loop_exit_69  # Exit loop 1
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-lw x6, 340(x3)
-lw x1, 700(x3)
-sw x6, 656(x3)
-sw x4, 788(x3)
-bne x0, x0, 8
-addi x0, x0, 0  # Executed instruction
-sll x7, x6, x7
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-srl x5, x4, x5
-sw x1, 932(x3)
-srl x7, x4, x7
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-sll x6, x2, x6
-sw x1, 792(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-sw x2, 148(x3)
-# LOOP 70 (depth 1, break at 4, max 10)
-addi x2, x0, 10
-addi x4, x0, 4
-addi x1, x0, 0
-loop_start_70:
-j loop_exit_70  # Exit loop 1
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-lw x1, 484(x3)
-sub x7, x1, x7
-sw x6, 12(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-xor x4, x1, x4
-lw x6, 548(x3)
-# LOOP 71 (depth 1, break at 4, max 9)
-addi x7, x0, 9
-addi x5, x0, 4
-addi x4, x0, 0
-loop_start_71:
-j loop_exit_71  # Exit loop 1
-add x2, x5, x2
-lw x2, 736(x3)
-add x6, x2, x6
-bne x0, x0, 8
-addi x0, x0, 0  # Executed instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-xor x1, x5, x1
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-and x5, x1, x5
-# LOOP 72 (depth 1, break at 3, max 6)
-addi x4, x0, 6
-addi x2, x0, 3
-addi x6, x0, 0
-loop_start_72:
-lw x6, 420(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-sw x5, 344(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-lw x4, 388(x3)
-sw x7, 372(x3)
-# LOOP 73 (depth 2, break at 4, max 9)
-addi x2, x0, 9
-addi x1, x0, 4
 addi x7, x0, 0
-loop_start_73:
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-# LOOP 74 (depth 3, break at 3, max 8)
-addi x2, x0, 8
-addi x1, x0, 3
-addi x5, x0, 0
-loop_start_74:
-sub x6, x7, x6
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-xor x2, x6, x2
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-add x6, x4, x6
-add x4, x2, x4
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-# LOOP 75 (depth 4, break at 1, max 7)
-addi x7, x0, 7
-addi x2, x0, 1
-addi x6, x0, 0
-loop_start_75:
-or x5, x2, x5
-j loop_exit_75  # Exit loop 4
-lw x2, 668(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-srl x7, x2, x7
-sw x1, 724(x3)
-# LOOP 76 (depth 4, break at 3, max 10)
-addi x6, x0, 10
-addi x2, x0, 3
-addi x1, x0, 0
-loop_start_76:
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-lw x2, 916(x3)
-lw x4, 520(x3)
-srl x4, x4, x4
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-bne x0, x0, 8
-addi x0, x0, 0  # Executed instruction
-srl x2, x7, x2
-xor x1, x5, x1
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-add x4, x1, x4
-j loop_exit_76  # Exit loop 4
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-j loop_exit_74  # Exit loop 3
-lw x4, 404(x3)
-lw x2, 540(x3)
-srl x4, x1, x4
-and x7, x6, x7
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-sw x4, 780(x3)
-j loop_exit_73  # Exit loop 2
-xor x4, x6, x4
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-j loop_exit_72  # Exit loop 1
-sub x2, x5, x2
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-# LOOP 77 (depth 1, break at 4, max 7)
-addi x5, x0, 7
-addi x6, x0, 4
-addi x7, x0, 0
-loop_start_77:
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-sw x5, 808(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-j loop_exit_77  # Exit loop 1
-or x5, x5, x5
-or x1, x2, x1
-# LOOP 78 (depth 1, break at 1, max 5)
-addi x7, x0, 5
-addi x2, x0, 1
-addi x5, x0, 0
-loop_start_78:
-# LOOP 79 (depth 2, break at 4, max 8)
-addi x4, x0, 8
-addi x1, x0, 4
-addi x7, x0, 0
-loop_start_79:
-lw x6, 848(x3)
-sw x6, 16(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-lw x4, 716(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-bne x0, x0, 8
-addi x0, x0, 0  # Executed instruction
-sll x1, x2, x1
-j loop_exit_79  # Exit loop 2
-xor x7, x7, x7
-sub x1, x2, x1
-j loop_exit_78  # Exit loop 1
-# LOOP 80 (depth 1, break at 4, max 9)
-addi x4, x0, 9
-addi x2, x0, 4
-addi x5, x0, 0
-loop_start_80:
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-or x5, x5, x5
-# LOOP 81 (depth 2, break at 3, max 4)
-addi x4, x0, 4
-addi x2, x0, 3
-addi x1, x0, 0
-loop_start_81:
-# LOOP 82 (depth 3, break at 4, max 5)
+loop_start_37:
+and x6, x5, x1
+beq x0, x0, skip_taken_71 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_71:
+
+# --- Closing Loop 37 (Depth: 2) ---
+addi x7, x7, 1
+beq x7, x5, loop_exit_37  # Conditional break from loop
+blt x7, x1, loop_start_37 # Branch back to loop start
+loop_exit_37: # Define loop exit label
+# --- Resuming code after Loop 37 ---
+
+beq x0, x0, skip_taken_72 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_72:
+
+# --- Starting Loop 38 (Depth: 2, break at 5, max 8) ---
+addi x7, x0, 8
 addi x5, x0, 5
-addi x2, x0, 4
-addi x7, x0, 0
-loop_start_82:
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-lw x5, 300(x3)
-sw x1, 484(x3)
-xor x6, x7, x6
-j loop_exit_82  # Exit loop 3
-add x4, x1, x4
-lw x2, 944(x3)
-# LOOP 83 (depth 3, break at 5, max 10)
-addi x6, x0, 10
-addi x4, x0, 5
-addi x7, x0, 0
-loop_start_83:
-j loop_exit_83  # Exit loop 3
-bne x0, x0, 8
-addi x0, x0, 0  # Executed instruction
-lw x1, 4(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-# LOOP 84 (depth 3, break at 5, max 10)
-addi x2, x0, 10
-addi x4, x0, 5
-addi x7, x0, 0
-loop_start_84:
-lw x7, 156(x3)
-sub x4, x2, x4
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-lw x4, 708(x3)
-j loop_exit_84  # Exit loop 3
-lw x7, 516(x3)
-srl x1, x6, x1
-lw x2, 468(x3)
-lw x7, 696(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-sw x2, 356(x3)
-# LOOP 85 (depth 3, break at 3, max 7)
-addi x1, x0, 7
-addi x2, x0, 3
-addi x6, x0, 0
-loop_start_85:
-# LOOP 86 (depth 4, break at 3, max 5)
-addi x1, x0, 5
-addi x5, x0, 3
-addi x7, x0, 0
-loop_start_86:
-sw x2, 52(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-bne x0, x0, 8
-addi x0, x0, 0  # Executed instruction
-bne x0, x0, 8
-addi x0, x0, 0  # Executed instruction
-lw x1, 772(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-srl x7, x1, x7
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-sw x7, 404(x3)
-sll x4, x5, x4
-sub x2, x5, x2
-sll x4, x2, x4
-bne x0, x0, 8
-addi x0, x0, 0  # Executed instruction
-add x7, x7, x7
-j loop_exit_86  # Exit loop 4
-lw x5, 392(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-j loop_exit_85  # Exit loop 3
-and x5, x5, x5
-# LOOP 87 (depth 3, break at 4, max 7)
-addi x4, x0, 7
-addi x6, x0, 4
-addi x2, x0, 0
-loop_start_87:
-and x6, x1, x6
-and x4, x6, x4
-sub x7, x6, x7
-j loop_exit_87  # Exit loop 3
-sw x7, 872(x3)
-j loop_exit_81  # Exit loop 2
-srl x2, x4, x2
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-# LOOP 88 (depth 2, break at 1, max 8)
-addi x4, x0, 8
+addi x1, x0, 0
+loop_start_38:
+xor x2, x6, x4
+sw x6, 512(x3)
+
+# --- Closing Loop 38 (Depth: 2) ---
+addi x1, x1, 1
+beq x1, x5, loop_exit_38  # Conditional break from loop
+blt x1, x7, loop_start_38 # Branch back to loop start
+loop_exit_38: # Define loop exit label
+# --- Resuming code after Loop 38 ---
+
+
+# --- Starting Loop 39 (Depth: 2, break at 1, max 8) ---
+addi x6, x0, 8
 addi x5, x0, 1
-addi x6, x0, 0
-loop_start_88:
-sw x6, 4(x3)
-lw x7, 228(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-sw x2, 40(x3)
-j loop_exit_88  # Exit loop 2
-# LOOP 89 (depth 2, break at 2, max 10)
+addi x7, x0, 0
+loop_start_39:
+sw x7, 100(x3)
+beq x0, x0, skip_taken_73 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_73:
+sw x5, 440(x3)
+lw x1, 496(x3)
+lw x6, 988(x3)
+
+# --- Closing Loop 39 (Depth: 2) ---
+addi x7, x7, 1
+beq x7, x5, loop_exit_39  # Conditional break from loop
+blt x7, x6, loop_start_39 # Branch back to loop start
+loop_exit_39: # Define loop exit label
+# --- Resuming code after Loop 39 ---
+
+sw x5, 280(x3)
+
+# --- Starting Loop 40 (Depth: 2, break at 4, max 7) ---
+addi x4, x0, 7
+addi x1, x0, 4
+addi x5, x0, 0
+loop_start_40:
+sub x4, x2, x1
+beq x0, x0, skip_taken_74 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_74:
+beq x0, x0, skip_taken_75 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_75:
+xor x1, x5, x6
+beq x0, x0, skip_taken_76 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_76:
+add x1, x4, x7
+lw x5, 532(x3)
+beq x0, x0, skip_taken_77 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_77:
+beq x0, x0, skip_taken_78 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_78:
+srl x4, x1, x7
+lw x7, 532(x3)
+
+# --- Starting Loop 41 (Depth: 3, break at 2, max 10) ---
 addi x5, x0, 10
 addi x2, x0, 2
 addi x4, x0, 0
-loop_start_89:
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-# LOOP 90 (depth 3, break at 1, max 4)
-addi x1, x0, 4
-addi x6, x0, 1
-addi x2, x0, 0
-loop_start_90:
-j loop_exit_90  # Exit loop 3
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-sw x4, 284(x3)
-bne x0, x0, 8
-addi x0, x0, 0  # Executed instruction
-# LOOP 91 (depth 3, break at 5, max 10)
-addi x7, x0, 10
-addi x1, x0, 5
-addi x6, x0, 0
-loop_start_91:
-# LOOP 92 (depth 4, break at 5, max 8)
-addi x2, x0, 8
-addi x5, x0, 5
-addi x4, x0, 0
-loop_start_92:
-sw x5, 804(x3)
-sub x5, x7, x5
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-sw x5, 932(x3)
-j loop_exit_92  # Exit loop 4
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-add x2, x2, x2
-sll x6, x2, x6
-lw x1, 180(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-# LOOP 93 (depth 4, break at 3, max 6)
-addi x5, x0, 6
-addi x2, x0, 3
-addi x4, x0, 0
-loop_start_93:
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-xor x1, x4, x1
-j loop_exit_93  # Exit loop 4
-sw x1, 320(x3)
-add x5, x4, x5
-lw x5, 52(x3)
-sw x5, 964(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-sub x7, x7, x7
-j loop_exit_91  # Exit loop 3
-sw x7, 780(x3)
-xor x4, x4, x4
-# LOOP 94 (depth 3, break at 3, max 5)
-addi x6, x0, 5
-addi x5, x0, 3
-addi x2, x0, 0
-loop_start_94:
-sll x6, x2, x6
-and x1, x5, x1
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-lw x1, 500(x3)
-srl x4, x4, x4
-and x2, x4, x2
-or x6, x4, x6
-and x4, x4, x4
-lw x7, 868(x3)
-sw x4, 568(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-bne x0, x0, 8
-addi x0, x0, 0  # Executed instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-bne x0, x0, 8
-addi x0, x0, 0  # Executed instruction
-j loop_exit_94  # Exit loop 3
-add x4, x5, x4
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-bne x0, x0, 8
-addi x0, x0, 0  # Executed instruction
-lw x4, 744(x3)
-lw x5, 696(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-and x1, x4, x1
-lw x2, 736(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-j loop_exit_89  # Exit loop 2
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-lw x2, 928(x3)
-# LOOP 95 (depth 2, break at 3, max 6)
-addi x1, x0, 6
-addi x4, x0, 3
-addi x7, x0, 0
-loop_start_95:
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-srl x5, x7, x5
-# LOOP 96 (depth 3, break at 1, max 4)
-addi x7, x0, 4
-addi x4, x0, 1
-addi x1, x0, 0
-loop_start_96:
-j loop_exit_96  # Exit loop 3
-add x2, x7, x2
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-sll x5, x2, x5
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-j loop_exit_95  # Exit loop 2
-xor x7, x5, x7
-srl x5, x4, x5
-bne x0, x0, 8
-addi x0, x0, 0  # Executed instruction
-# LOOP 97 (depth 2, break at 1, max 5)
-addi x4, x0, 5
-addi x2, x0, 1
-addi x7, x0, 0
-loop_start_97:
-sw x4, 740(x3)
-j loop_exit_97  # Exit loop 2
-j loop_exit_80  # Exit loop 1
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-sub x1, x1, x1
-# LOOP 98 (depth 1, break at 3, max 4)
-addi x2, x0, 4
-addi x4, x0, 3
-addi x5, x0, 0
-loop_start_98:
-# LOOP 99 (depth 2, break at 1, max 10)
-addi x1, x0, 10
-addi x2, x0, 1
-addi x4, x0, 0
-loop_start_99:
-# LOOP 100 (depth 3, break at 1, max 4)
-addi x5, x0, 4
-addi x6, x0, 1
-addi x1, x0, 0
-loop_start_100:
-j loop_exit_100  # Exit loop 3
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-# LOOP 101 (depth 3, break at 3, max 4)
-addi x2, x0, 4
-addi x5, x0, 3
-addi x6, x0, 0
-loop_start_101:
-lw x5, 912(x3)
-sw x1, 172(x3)
-lw x2, 224(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-lw x6, 412(x3)
-sll x1, x6, x1
-lw x4, 12(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-j loop_exit_101  # Exit loop 3
-xor x1, x5, x1
-# LOOP 102 (depth 3, break at 3, max 8)
-addi x6, x0, 8
-addi x4, x0, 3
-addi x5, x0, 0
-loop_start_102:
-bne x0, x0, 8
-addi x0, x0, 0  # Executed instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-bne x0, x0, 8
-addi x0, x0, 0  # Executed instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-lw x5, 808(x3)
-or x1, x4, x1
-sw x1, 556(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-lw x2, 840(x3)
-add x7, x2, x7
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-lw x1, 596(x3)
-sw x6, 400(x3)
-sw x4, 112(x3)
-sw x6, 800(x3)
-# LOOP 103 (depth 4, break at 4, max 7)
-addi x4, x0, 7
-addi x7, x0, 4
-addi x2, x0, 0
-loop_start_103:
-j loop_exit_103  # Exit loop 4
-j loop_exit_102  # Exit loop 3
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-j loop_exit_99  # Exit loop 2
-bne x0, x0, 8
-addi x0, x0, 0  # Executed instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-sw x2, 196(x3)
-sll x1, x1, x1
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-bne x0, x0, 8
-addi x0, x0, 0  # Executed instruction
-bne x0, x0, 8
-addi x0, x0, 0  # Executed instruction
-j loop_exit_98  # Exit loop 1
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-sub x2, x7, x2
-# LOOP 104 (depth 1, break at 4, max 9)
-addi x6, x0, 9
-addi x5, x0, 4
-addi x1, x0, 0
-loop_start_104:
-j loop_exit_104  # Exit loop 1
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-sw x6, 68(x3)
-# LOOP 105 (depth 1, break at 5, max 6)
-addi x7, x0, 6
-addi x5, x0, 5
-addi x4, x0, 0
-loop_start_105:
-xor x2, x4, x2
-j loop_exit_105  # Exit loop 1
-and x6, x4, x6
-or x7, x6, x7
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-# LOOP 106 (depth 1, break at 2, max 4)
-addi x5, x0, 4
-addi x6, x0, 2
-addi x4, x0, 0
-loop_start_106:
-j loop_exit_106  # Exit loop 1
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-sll x1, x2, x1
-bne x0, x0, 8
-addi x0, x0, 0  # Executed instruction
-sw x1, 300(x3)
-sw x4, 876(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-# LOOP 107 (depth 1, break at 2, max 6)
-addi x2, x0, 6
-addi x4, x0, 2
-addi x7, x0, 0
-loop_start_107:
-sw x1, 380(x3)
-j loop_exit_107  # Exit loop 1
-lw x6, 436(x3)
-lw x1, 280(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-sub x2, x1, x2
-sll x7, x6, x7
-sw x5, 520(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-srl x5, x1, x5
-lw x5, 204(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-bne x0, x0, 8
-addi x0, x0, 0  # Executed instruction
-# LOOP 108 (depth 1, break at 5, max 7)
-addi x1, x0, 7
-addi x4, x0, 5
-addi x6, x0, 0
-loop_start_108:
-j loop_exit_108  # Exit loop 1
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-# LOOP 109 (depth 1, break at 3, max 6)
-addi x7, x0, 6
-addi x2, x0, 3
-addi x1, x0, 0
-loop_start_109:
-sub x2, x1, x2
-sll x1, x1, x1
-# LOOP 110 (depth 2, break at 4, max 5)
-addi x4, x0, 5
-addi x5, x0, 4
-addi x7, x0, 0
-loop_start_110:
-srl x6, x1, x6
-j loop_exit_110  # Exit loop 2
-j loop_exit_109  # Exit loop 1
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-add x4, x6, x4
-xor x6, x7, x6
-lw x6, 592(x3)
-lw x7, 60(x3)
-# LOOP 111 (depth 1, break at 4, max 6)
-addi x5, x0, 6
-addi x1, x0, 4
-addi x2, x0, 0
-loop_start_111:
-or x1, x4, x1
-or x5, x7, x5
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-lw x6, 884(x3)
-lw x5, 872(x3)
-# LOOP 112 (depth 2, break at 4, max 5)
-addi x4, x0, 5
-addi x7, x0, 4
-addi x6, x0, 0
-loop_start_112:
-or x2, x7, x2
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-bne x0, x0, 8
-addi x0, x0, 0  # Executed instruction
-j loop_exit_112  # Exit loop 2
-j loop_exit_111  # Exit loop 1
-srl x6, x2, x6
-# LOOP 113 (depth 1, break at 5, max 10)
-addi x7, x0, 10
-addi x1, x0, 5
-addi x2, x0, 0
-loop_start_113:
-# LOOP 114 (depth 2, break at 5, max 8)
-addi x5, x0, 8
-addi x6, x0, 5
-addi x4, x0, 0
-loop_start_114:
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-or x4, x4, x4
-# LOOP 115 (depth 3, break at 5, max 10)
-addi x6, x0, 10
-addi x1, x0, 5
-addi x5, x0, 0
-loop_start_115:
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-# LOOP 116 (depth 4, break at 3, max 9)
-addi x4, x0, 9
-addi x7, x0, 3
-addi x2, x0, 0
-loop_start_116:
-sll x1, x4, x1
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-bne x0, x0, 8
-addi x0, x0, 0  # Executed instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-sw x1, 24(x3)
-xor x4, x7, x4
-or x5, x6, x5
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-bne x0, x0, 8
-addi x0, x0, 0  # Executed instruction
-sub x6, x5, x6
-bne x0, x0, 8
-addi x0, x0, 0  # Executed instruction
-bne x0, x0, 8
-addi x0, x0, 0  # Executed instruction
-xor x4, x5, x4
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-sw x6, 864(x3)
-j loop_exit_116  # Exit loop 4
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-srl x2, x5, x2
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-sw x5, 496(x3)
-lw x7, 692(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-# LOOP 117 (depth 4, break at 5, max 6)
-addi x6, x0, 6
-addi x5, x0, 5
-addi x4, x0, 0
-loop_start_117:
-lw x5, 28(x3)
-lw x6, 136(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-bne x0, x0, 8
-addi x0, x0, 0  # Executed instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-lw x6, 496(x3)
-sw x4, 632(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-j loop_exit_117  # Exit loop 4
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-bne x0, x0, 8
-addi x0, x0, 0  # Executed instruction
-srl x4, x4, x4
-# LOOP 118 (depth 4, break at 5, max 8)
-addi x5, x0, 8
-addi x7, x0, 5
-addi x6, x0, 0
-loop_start_118:
-or x4, x6, x4
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-srl x1, x4, x1
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-lw x1, 216(x3)
-and x5, x4, x5
-xor x1, x7, x1
-lw x2, 664(x3)
-sw x5, 28(x3)
-xor x4, x7, x4
-sw x4, 848(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-xor x5, x1, x5
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-add x2, x4, x2
-and x1, x4, x1
-lw x5, 16(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-j loop_exit_118  # Exit loop 4
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-and x5, x5, x5
-lw x5, 956(x3)
-xor x2, x6, x2
-bne x0, x0, 8
-addi x0, x0, 0  # Executed instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-sw x1, 444(x3)
-bne x0, x0, 8
-addi x0, x0, 0  # Executed instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-j loop_exit_115  # Exit loop 3
-sub x4, x5, x4
-# LOOP 119 (depth 3, break at 5, max 8)
-addi x2, x0, 8
-addi x7, x0, 5
-addi x6, x0, 0
-loop_start_119:
-sll x7, x1, x7
-# LOOP 120 (depth 4, break at 4, max 10)
-addi x1, x0, 10
-addi x4, x0, 4
-addi x6, x0, 0
-loop_start_120:
-srl x1, x6, x1
-lw x4, 116(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-and x2, x2, x2
-j loop_exit_120  # Exit loop 4
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-# LOOP 121 (depth 4, break at 5, max 9)
-addi x7, x0, 9
-addi x1, x0, 5
-addi x6, x0, 0
-loop_start_121:
-add x2, x4, x2
-sw x4, 328(x3)
-and x6, x7, x6
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-lw x6, 800(x3)
-lw x4, 44(x3)
-lw x2, 524(x3)
-sw x4, 20(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-bne x0, x0, 8
-addi x0, x0, 0  # Executed instruction
-and x5, x6, x5
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-lw x1, 500(x3)
-sub x6, x1, x6
-sw x6, 764(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-or x5, x7, x5
-j loop_exit_121  # Exit loop 4
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-sll x5, x5, x5
-# LOOP 122 (depth 4, break at 3, max 9)
-addi x7, x0, 9
-addi x4, x0, 3
-addi x6, x0, 0
-loop_start_122:
-or x6, x6, x6
-j loop_exit_122  # Exit loop 4
-j loop_exit_119  # Exit loop 3
-j loop_exit_114  # Exit loop 2
-and x2, x1, x2
-lw x5, 748(x3)
-lw x5, 476(x3)
-lw x6, 680(x3)
-j loop_exit_113  # Exit loop 1
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-# LOOP 123 (depth 1, break at 4, max 7)
-addi x2, x0, 7
-addi x4, x0, 4
-addi x7, x0, 0
-loop_start_123:
-# LOOP 124 (depth 2, break at 2, max 7)
-addi x1, x0, 7
-addi x4, x0, 2
-addi x5, x0, 0
-loop_start_124:
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-bne x0, x0, 8
-addi x0, x0, 0  # Executed instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-sw x5, 92(x3)
-j loop_exit_124  # Exit loop 2
-or x7, x6, x7
-lw x5, 728(x3)
-sw x2, 364(x3)
-or x2, x7, x2
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-and x4, x2, x4
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-# LOOP 125 (depth 2, break at 3, max 7)
+loop_start_41:
+beq x0, x0, skip_taken_79 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_79:
+sw x6, 628(x3)
+
+# --- Closing Loop 41 (Depth: 3) ---
+addi x4, x4, 1
+beq x4, x2, loop_exit_41  # Conditional break from loop
+blt x4, x5, loop_start_41 # Branch back to loop start
+loop_exit_41: # Define loop exit label
+# --- Resuming code after Loop 41 ---
+
+beq x0, x0, skip_taken_80 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_80:
+
+# --- Closing Loop 40 (Depth: 2) ---
+addi x5, x5, 1
+beq x5, x1, loop_exit_40  # Conditional break from loop
+blt x5, x4, loop_start_40 # Branch back to loop start
+loop_exit_40: # Define loop exit label
+# --- Resuming code after Loop 40 ---
+
+beq x0, x0, skip_taken_81 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_81:
+beq x0, x0, skip_taken_82 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_82:
+xor x5, x1, x2
+beq x0, x0, skip_taken_83 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_83:
+beq x0, x0, skip_taken_84 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_84:
+or x1, x6, x7
+
+# --- Starting Loop 42 (Depth: 2, break at 5, max 7) ---
 addi x7, x0, 7
-addi x6, x0, 3
-addi x1, x0, 0
-loop_start_125:
-# LOOP 126 (depth 3, break at 4, max 6)
-addi x7, x0, 6
-addi x4, x0, 4
-addi x2, x0, 0
-loop_start_126:
-lw x4, 912(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-sw x4, 788(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-add x6, x2, x6
-j loop_exit_126  # Exit loop 3
-lw x1, 460(x3)
-sw x1, 484(x3)
-j loop_exit_125  # Exit loop 2
-lw x4, 424(x3)
-# LOOP 127 (depth 2, break at 4, max 10)
-addi x1, x0, 10
-addi x7, x0, 4
-addi x2, x0, 0
-loop_start_127:
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-lw x2, 584(x3)
-j loop_exit_127  # Exit loop 2
-sw x2, 516(x3)
-j loop_exit_123  # Exit loop 1
-# LOOP 128 (depth 1, break at 2, max 6)
-addi x1, x0, 6
-addi x7, x0, 2
-addi x5, x0, 0
-loop_start_128:
-lw x5, 988(x3)
-j loop_exit_128  # Exit loop 1
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-sw x1, 632(x3)
-lw x7, 84(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-add x7, x7, x7
-# LOOP 129 (depth 1, break at 4, max 6)
-addi x2, x0, 6
-addi x1, x0, 4
-addi x6, x0, 0
-loop_start_129:
-j loop_exit_129  # Exit loop 1
-lw x6, 312(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-# LOOP 130 (depth 1, break at 5, max 7)
-addi x2, x0, 7
-addi x1, x0, 5
-addi x7, x0, 0
-loop_start_130:
-j loop_exit_130  # Exit loop 1
-sw x4, 420(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-sll x5, x1, x5
-and x4, x5, x4
-srl x7, x6, x7
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-add x2, x1, x2
-lw x4, 356(x3)
-srl x7, x7, x7
-sw x4, 312(x3)
-xor x1, x6, x1
-# LOOP 131 (depth 1, break at 4, max 8)
-addi x5, x0, 8
-addi x6, x0, 4
-addi x7, x0, 0
-loop_start_131:
-j loop_exit_131  # Exit loop 1
-# LOOP 132 (depth 1, break at 4, max 6)
-addi x1, x0, 6
-addi x6, x0, 4
-addi x2, x0, 0
-loop_start_132:
-add x6, x2, x6
-add x5, x4, x5
-add x6, x5, x6
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-sw x1, 248(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-srl x2, x2, x2
-j loop_exit_132  # Exit loop 1
-lw x2, 24(x3)
-# LOOP 133 (depth 1, break at 3, max 6)
-addi x1, x0, 6
-addi x4, x0, 3
-addi x6, x0, 0
-loop_start_133:
-xor x2, x1, x2
-add x2, x2, x2
-# LOOP 134 (depth 2, break at 1, max 3)
-addi x1, x0, 3
-addi x4, x0, 1
-addi x7, x0, 0
-loop_start_134:
-add x4, x4, x4
-lw x4, 568(x3)
-or x6, x4, x6
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-j loop_exit_134  # Exit loop 2
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-# LOOP 135 (depth 2, break at 2, max 9)
-addi x4, x0, 9
-addi x5, x0, 2
-addi x2, x0, 0
-loop_start_135:
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-j loop_exit_135  # Exit loop 2
-# LOOP 136 (depth 2, break at 5, max 9)
-addi x1, x0, 9
-addi x5, x0, 5
-addi x7, x0, 0
-loop_start_136:
-lw x1, 188(x3)
-sw x1, 348(x3)
-sw x7, 972(x3)
-# LOOP 137 (depth 3, break at 5, max 7)
-addi x6, x0, 7
 addi x4, x0, 5
 addi x5, x0, 0
-loop_start_137:
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-bne x0, x0, 8
-addi x0, x0, 0  # Executed instruction
-j loop_exit_137  # Exit loop 3
-# LOOP 138 (depth 3, break at 1, max 6)
-addi x2, x0, 6
-addi x6, x0, 1
-addi x1, x0, 0
-loop_start_138:
-and x4, x1, x4
-xor x1, x2, x1
-sub x6, x4, x6
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-bne x0, x0, 8
-addi x0, x0, 0  # Executed instruction
-lw x1, 644(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-sub x2, x7, x2
-lw x2, 228(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-and x1, x1, x1
-lw x4, 84(x3)
-sw x7, 484(x3)
-sll x5, x2, x5
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-and x4, x2, x4
-sw x5, 444(x3)
-sll x5, x6, x5
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-j loop_exit_138  # Exit loop 3
-xor x6, x5, x6
-sw x7, 368(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-lw x2, 84(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-sw x7, 444(x3)
-and x5, x7, x5
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-add x1, x5, x1
-lw x1, 984(x3)
-# LOOP 139 (depth 3, break at 5, max 7)
-addi x5, x0, 7
-addi x6, x0, 5
-addi x7, x0, 0
-loop_start_139:
-bne x0, x0, 8
-addi x0, x0, 0  # Executed instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-sw x1, 860(x3)
-sw x4, 668(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-j loop_exit_139  # Exit loop 3
-# LOOP 140 (depth 3, break at 5, max 8)
-addi x2, x0, 8
+loop_start_42:
+sll x6, x1, x4
+or x7, x6, x4
+sw x7, 296(x3)
+
+# --- Closing Loop 42 (Depth: 2) ---
+addi x5, x5, 1
+beq x5, x4, loop_exit_42  # Conditional break from loop
+blt x5, x7, loop_start_42 # Branch back to loop start
+loop_exit_42: # Define loop exit label
+# --- Resuming code after Loop 42 ---
+
+sw x7, 936(x3)
+beq x0, x0, skip_taken_85 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_85:
+bne x0, x0, skip_nottaken_86 # Never branch
+addi x0, x0, 0  # This instruction is executed
+skip_nottaken_86:
+lw x4, 68(x3)
+beq x0, x0, skip_taken_87 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_87:
+
+# --- Closing Loop 32 (Depth: 1) ---
+addi x2, x2, 1
+beq x2, x5, loop_exit_32  # Conditional break from loop
+blt x2, x7, loop_start_32 # Branch back to loop start
+loop_exit_32: # Define loop exit label
+# --- Resuming code after Loop 32 ---
+
+bne x0, x0, skip_nottaken_88 # Never branch
+addi x0, x0, 0  # This instruction is executed
+skip_nottaken_88:
+beq x0, x0, skip_taken_89 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_89:
+srl x7, x4, x2
+
+# --- Starting Loop 43 (Depth: 1, break at 1, max 5) ---
 addi x4, x0, 5
-addi x6, x0, 0
-loop_start_140:
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-sw x6, 388(x3)
-lw x5, 76(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-sll x6, x4, x6
-# LOOP 141 (depth 4, break at 2, max 4)
-addi x4, x0, 4
-addi x7, x0, 2
-addi x5, x0, 0
-loop_start_141:
-j loop_exit_141  # Exit loop 4
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-sw x5, 544(x3)
-sw x7, 536(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-lw x7, 108(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-sll x4, x5, x4
-srl x2, x6, x2
-j loop_exit_140  # Exit loop 3
-sw x4, 684(x3)
-# LOOP 142 (depth 3, break at 1, max 9)
-addi x6, x0, 9
-addi x1, x0, 1
-addi x5, x0, 0
-loop_start_142:
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-sub x1, x6, x1
-j loop_exit_142  # Exit loop 3
-and x2, x1, x2
-lw x7, 900(x3)
-lw x5, 368(x3)
-j loop_exit_136  # Exit loop 2
-sw x6, 180(x3)
-sub x1, x6, x1
-lw x6, 548(x3)
-or x1, x2, x1
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-lw x2, 528(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-lw x5, 656(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-j loop_exit_133  # Exit loop 1
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-# LOOP 143 (depth 1, break at 2, max 10)
-addi x6, x0, 10
-addi x4, x0, 2
-addi x1, x0, 0
-loop_start_143:
-j loop_exit_143  # Exit loop 1
-sll x5, x1, x5
-lw x7, 824(x3)
-# LOOP 144 (depth 1, break at 3, max 8)
-addi x2, x0, 8
-addi x5, x0, 3
-addi x1, x0, 0
-loop_start_144:
-# LOOP 145 (depth 2, break at 2, max 4)
-addi x2, x0, 4
-addi x4, x0, 2
-addi x7, x0, 0
-loop_start_145:
-add x7, x7, x7
-j loop_exit_145  # Exit loop 2
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-sw x7, 532(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-bne x0, x0, 8
-addi x0, x0, 0  # Executed instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-j loop_exit_144  # Exit loop 1
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-sll x1, x2, x1
-sw x1, 328(x3)
-sub x2, x6, x2
-sub x5, x1, x5
-# LOOP 146 (depth 1, break at 3, max 8)
-addi x1, x0, 8
-addi x2, x0, 3
-addi x4, x0, 0
-loop_start_146:
-# LOOP 147 (depth 2, break at 3, max 9)
-addi x6, x0, 9
-addi x5, x0, 3
-addi x1, x0, 0
-loop_start_147:
-# LOOP 148 (depth 3, break at 1, max 9)
-addi x4, x0, 9
 addi x5, x0, 1
 addi x2, x0, 0
-loop_start_148:
-sll x2, x2, x2
-or x7, x1, x7
-and x4, x7, x4
-lw x2, 848(x3)
-sw x4, 680(x3)
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-and x7, x4, x7
-j loop_exit_148  # Exit loop 3
-lw x6, 832(x3)
-lw x2, 32(x3)
-bne x0, x0, 8
-addi x0, x0, 0  # Executed instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-j loop_exit_147  # Exit loop 2
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-# LOOP 149 (depth 2, break at 3, max 4)
-addi x4, x0, 4
-addi x6, x0, 3
-addi x7, x0, 0
-loop_start_149:
-xor x2, x5, x2
-j loop_exit_149  # Exit loop 2
-j loop_exit_146  # Exit loop 1
-# LOOP 150 (depth 1, break at 1, max 2)
-addi x5, x0, 2
-addi x1, x0, 1
-addi x4, x0, 0
-loop_start_150:
-sub x1, x4, x1
-sw x4, 520(x3)
-j loop_exit_150  # Exit loop 1
-add x4, x4, x4
-# LOOP 151 (depth 1, break at 5, max 10)
-addi x2, x0, 10
+loop_start_43:
+
+# --- Starting Loop 44 (Depth: 2, break at 4, max 5) ---
 addi x5, x0, 5
+addi x6, x0, 4
+addi x7, x0, 0
+loop_start_44:
+bne x0, x0, skip_nottaken_90 # Never branch
+addi x0, x0, 0  # This instruction is executed
+skip_nottaken_90:
+lw x4, 384(x3)
+lw x2, 40(x3)
+lw x7, 684(x3)
+
+# --- Closing Loop 44 (Depth: 2) ---
+addi x7, x7, 1
+beq x7, x6, loop_exit_44  # Conditional break from loop
+blt x7, x5, loop_start_44 # Branch back to loop start
+loop_exit_44: # Define loop exit label
+# --- Resuming code after Loop 44 ---
+
+beq x0, x0, skip_taken_91 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_91:
+sw x5, 912(x3)
+sw x7, 688(x3)
+srl x5, x7, x6
+add x2, x4, x4
+
+# --- Closing Loop 43 (Depth: 1) ---
+addi x2, x2, 1
+beq x2, x5, loop_exit_43  # Conditional break from loop
+blt x2, x4, loop_start_43 # Branch back to loop start
+loop_exit_43: # Define loop exit label
+# --- Resuming code after Loop 43 ---
+
+sw x1, 948(x3)
+
+# --- Starting Loop 45 (Depth: 1, break at 1, max 9) ---
+addi x6, x0, 9
+addi x5, x0, 1
+addi x4, x0, 0
+loop_start_45:
+
+# --- Starting Loop 46 (Depth: 2, break at 1, max 4) ---
+addi x1, x0, 4
+addi x5, x0, 1
 addi x6, x0, 0
-loop_start_151:
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-lw x2, 64(x3)
-j loop_exit_151  # Exit loop 1
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-add x4, x7, x4
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-beq x0, x0, 8
-addi x0, x0, 0  # Skipped instruction
-lw x4, 820(x3)
-# LOOP 152 (depth 1, break at 3, max 9)
-addi x2, x0, 9
-addi x5, x0, 3
-addi x1, x0, 0
-loop_start_152:
-# LOOP 153 (depth 2, break at 3, max 6)
-addi x4, x0, 6
+loop_start_46:
+
+# --- Starting Loop 47 (Depth: 3, break at 4, max 7) ---
+addi x5, x0, 7
+addi x4, x0, 4
+addi x7, x0, 0
+loop_start_47:
+beq x0, x0, skip_taken_92 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_92:
+lw x5, 360(x3)
+sll x5, x7, x2
+beq x0, x0, skip_taken_93 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_93:
+
+# --- Closing Loop 47 (Depth: 3) ---
+addi x7, x7, 1
+beq x7, x4, loop_exit_47  # Conditional break from loop
+blt x7, x5, loop_start_47 # Branch back to loop start
+loop_exit_47: # Define loop exit label
+# --- Resuming code after Loop 47 ---
+
+beq x0, x0, skip_taken_94 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_94:
+srl x7, x4, x1
+beq x0, x0, skip_taken_95 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_95:
+
+# --- Closing Loop 46 (Depth: 2) ---
+addi x6, x6, 1
+beq x6, x5, loop_exit_46  # Conditional break from loop
+blt x6, x1, loop_start_46 # Branch back to loop start
+loop_exit_46: # Define loop exit label
+# --- Resuming code after Loop 46 ---
+
+lw x1, 348(x3)
+sub x6, x1, x1
+lw x7, 104(x3)
+beq x0, x0, skip_taken_96 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_96:
+beq x0, x0, skip_taken_97 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_97:
+sw x7, 484(x3)
+
+# --- Starting Loop 48 (Depth: 2, break at 3, max 5) ---
+addi x1, x0, 5
 addi x5, x0, 3
 addi x7, x0, 0
-loop_start_153:
+loop_start_48:
+sll x2, x1, x1
+beq x0, x0, skip_taken_98 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_98:
+beq x0, x0, skip_taken_99 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_99:
+beq x0, x0, skip_taken_100 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_100:
+
+# --- Starting Loop 49 (Depth: 3, break at 2, max 10) ---
+addi x1, x0, 10
+addi x5, x0, 2
+addi x6, x0, 0
+loop_start_49:
+beq x0, x0, skip_taken_101 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_101:
+sw x7, 696(x3)
+lw x4, 504(x3)
+lw x1, 404(x3)
+sw x6, 928(x3)
+xor x5, x4, x1
+
+# --- Closing Loop 49 (Depth: 3) ---
+addi x6, x6, 1
+beq x6, x5, loop_exit_49  # Conditional break from loop
+blt x6, x1, loop_start_49 # Branch back to loop start
+loop_exit_49: # Define loop exit label
+# --- Resuming code after Loop 49 ---
+
+
+# --- Starting Loop 50 (Depth: 3, break at 3, max 5) ---
+addi x2, x0, 5
+addi x4, x0, 3
+addi x7, x0, 0
+loop_start_50:
+bne x0, x0, skip_nottaken_102 # Never branch
+addi x0, x0, 0  # This instruction is executed
+skip_nottaken_102:
+bne x0, x0, skip_nottaken_103 # Never branch
+addi x0, x0, 0  # This instruction is executed
+skip_nottaken_103:
+beq x0, x0, skip_taken_104 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_104:
+sll x4, x6, x5
+sw x4, 476(x3)
+sw x4, 588(x3)
+beq x0, x0, skip_taken_105 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_105:
+bne x0, x0, skip_nottaken_106 # Never branch
+addi x0, x0, 0  # This instruction is executed
+skip_nottaken_106:
+beq x0, x0, skip_taken_107 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_107:
+sub x6, x4, x1
+beq x0, x0, skip_taken_108 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_108:
+beq x0, x0, skip_taken_109 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_109:
+lw x7, 856(x3)
+sll x6, x1, x5
+sw x2, 900(x3)
+beq x0, x0, skip_taken_110 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_110:
+
+# --- Closing Loop 50 (Depth: 3) ---
 addi x7, x7, 1
-beq x7, x5, 8   # Break to skip next instruction
-blt x7, x4, loop_start_153
-loop_exit_153:
+beq x7, x4, loop_exit_50  # Conditional break from loop
+blt x7, x2, loop_start_50 # Branch back to loop start
+loop_exit_50: # Define loop exit label
+# --- Resuming code after Loop 50 ---
+
+beq x0, x0, skip_taken_111 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_111:
+or x4, x7, x6
+bne x0, x0, skip_nottaken_112 # Never branch
+addi x0, x0, 0  # This instruction is executed
+skip_nottaken_112:
+beq x0, x0, skip_taken_113 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_113:
+
+# --- Starting Loop 51 (Depth: 3, break at 4, max 7) ---
+addi x1, x0, 7
+addi x2, x0, 4
+addi x7, x0, 0
+loop_start_51:
+sw x5, 456(x3)
+beq x0, x0, skip_taken_114 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_114:
+
+# --- Closing Loop 51 (Depth: 3) ---
+addi x7, x7, 1
+beq x7, x2, loop_exit_51  # Conditional break from loop
+blt x7, x1, loop_start_51 # Branch back to loop start
+loop_exit_51: # Define loop exit label
+# --- Resuming code after Loop 51 ---
+
+
+# --- Starting Loop 52 (Depth: 3, break at 3, max 6) ---
+addi x6, x0, 6
+addi x4, x0, 3
+addi x2, x0, 0
+loop_start_52:
+or x6, x5, x7
+
+# --- Starting Loop 53 (Depth: 4, break at 1, max 3) ---
+addi x5, x0, 3
+addi x1, x0, 1
+addi x7, x0, 0
+loop_start_53:
+sw x5, 692(x3)
+lw x5, 724(x3)
+sw x5, 60(x3)
+lw x5, 512(x3)
+beq x0, x0, skip_taken_115 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_115:
+sub x5, x7, x6
+bne x0, x0, skip_nottaken_116 # Never branch
+addi x0, x0, 0  # This instruction is executed
+skip_nottaken_116:
+sll x7, x5, x5
+srl x6, x7, x5
+lw x5, 160(x3)
+beq x0, x0, skip_taken_117 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_117:
+beq x0, x0, skip_taken_118 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_118:
+
+# --- Closing Loop 53 (Depth: 4) ---
+addi x7, x7, 1
+beq x7, x1, loop_exit_53  # Conditional break from loop
+blt x7, x5, loop_start_53 # Branch back to loop start
+loop_exit_53: # Define loop exit label
+# --- Resuming code after Loop 53 ---
+
+lw x2, 992(x3)
+beq x0, x0, skip_taken_119 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_119:
+
+# --- Starting Loop 54 (Depth: 4, break at 2, max 4) ---
+addi x1, x0, 4
+addi x5, x0, 2
+addi x7, x0, 0
+loop_start_54:
+lw x4, 12(x3)
+sw x5, 632(x3)
+srl x5, x7, x4
+lw x6, 820(x3)
+sll x4, x5, x7
+beq x0, x0, skip_taken_120 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_120:
+lw x1, 120(x3)
+and x1, x2, x2
+bne x0, x0, skip_nottaken_121 # Never branch
+addi x0, x0, 0  # This instruction is executed
+skip_nottaken_121:
+sw x5, 580(x3)
+bne x0, x0, skip_nottaken_122 # Never branch
+addi x0, x0, 0  # This instruction is executed
+skip_nottaken_122:
+beq x0, x0, skip_taken_123 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_123:
+
+# --- Closing Loop 54 (Depth: 4) ---
+addi x7, x7, 1
+beq x7, x5, loop_exit_54  # Conditional break from loop
+blt x7, x1, loop_start_54 # Branch back to loop start
+loop_exit_54: # Define loop exit label
+# --- Resuming code after Loop 54 ---
+
+sll x7, x1, x6
+srl x5, x6, x2
+
+# --- Closing Loop 52 (Depth: 3) ---
+addi x2, x2, 1
+beq x2, x4, loop_exit_52  # Conditional break from loop
+blt x2, x6, loop_start_52 # Branch back to loop start
+loop_exit_52: # Define loop exit label
+# --- Resuming code after Loop 52 ---
+
+
+# --- Closing Loop 48 (Depth: 2) ---
+addi x7, x7, 1
+beq x7, x5, loop_exit_48  # Conditional break from loop
+blt x7, x1, loop_start_48 # Branch back to loop start
+loop_exit_48: # Define loop exit label
+# --- Resuming code after Loop 48 ---
+
+and x1, x6, x7
+sll x2, x1, x4
+lw x1, 860(x3)
+
+# --- Starting Loop 55 (Depth: 2, break at 1, max 2) ---
+addi x7, x0, 2
+addi x2, x0, 1
+addi x4, x0, 0
+loop_start_55:
+lw x1, 100(x3)
+
+# --- Starting Loop 56 (Depth: 3, break at 2, max 4) ---
+addi x2, x0, 4
+addi x6, x0, 2
+addi x4, x0, 0
+loop_start_56:
+beq x0, x0, skip_taken_124 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_124:
+or x4, x5, x5
+sll x7, x5, x2
+beq x0, x0, skip_taken_125 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_125:
+
+# --- Closing Loop 56 (Depth: 3) ---
+addi x4, x4, 1
+beq x4, x6, loop_exit_56  # Conditional break from loop
+blt x4, x2, loop_start_56 # Branch back to loop start
+loop_exit_56: # Define loop exit label
+# --- Resuming code after Loop 56 ---
+
+lw x6, 164(x3)
+
+# --- Starting Loop 57 (Depth: 3, break at 3, max 9) ---
+addi x7, x0, 9
+addi x4, x0, 3
+addi x1, x0, 0
+loop_start_57:
+beq x0, x0, skip_taken_126 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_126:
+beq x0, x0, skip_taken_127 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_127:
+sub x5, x1, x4
+beq x0, x0, skip_taken_128 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_128:
+lw x4, 136(x3)
+lw x1, 752(x3)
+srl x5, x2, x4
+beq x0, x0, skip_taken_129 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_129:
+
+# --- Closing Loop 57 (Depth: 3) ---
 addi x1, x1, 1
-beq x1, x5, 8   # Break to skip next instruction
-blt x1, x2, loop_start_152
-loop_exit_152:
+beq x1, x4, loop_exit_57  # Conditional break from loop
+blt x1, x7, loop_start_57 # Branch back to loop start
+loop_exit_57: # Define loop exit label
+# --- Resuming code after Loop 57 ---
+
+beq x0, x0, skip_taken_130 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_130:
+add x6, x1, x2
+lw x2, 296(x3)
+beq x0, x0, skip_taken_131 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_131:
+bne x0, x0, skip_nottaken_132 # Never branch
+addi x0, x0, 0  # This instruction is executed
+skip_nottaken_132:
+bne x0, x0, skip_nottaken_133 # Never branch
+addi x0, x0, 0  # This instruction is executed
+skip_nottaken_133:
+sw x2, 904(x3)
+sub x2, x5, x1
+
+# --- Starting Loop 58 (Depth: 3, break at 3, max 7) ---
+addi x4, x0, 7
+addi x7, x0, 3
+addi x1, x0, 0
+loop_start_58:
+beq x0, x0, skip_taken_134 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_134:
+
+# --- Closing Loop 58 (Depth: 3) ---
+addi x1, x1, 1
+beq x1, x7, loop_exit_58  # Conditional break from loop
+blt x1, x4, loop_start_58 # Branch back to loop start
+loop_exit_58: # Define loop exit label
+# --- Resuming code after Loop 58 ---
+
+beq x0, x0, skip_taken_135 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_135:
+add x4, x1, x5
+
+# --- Starting Loop 59 (Depth: 3, break at 4, max 7) ---
+addi x7, x0, 7
+addi x5, x0, 4
+addi x6, x0, 0
+loop_start_59:
+
+# --- Closing Loop 59 (Depth: 3) ---
+addi x6, x6, 1
+beq x6, x5, loop_exit_59  # Conditional break from loop
+blt x6, x7, loop_start_59 # Branch back to loop start
+loop_exit_59: # Define loop exit label
+# --- Resuming code after Loop 59 ---
+
+beq x0, x0, skip_taken_136 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_136:
+beq x0, x0, skip_taken_137 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_137:
+and x4, x7, x7
+sw x7, 8(x3)
+beq x0, x0, skip_taken_138 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_138:
+beq x0, x0, skip_taken_139 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_139:
+and x2, x6, x7
+
+# --- Closing Loop 55 (Depth: 2) ---
+addi x4, x4, 1
+beq x4, x2, loop_exit_55  # Conditional break from loop
+blt x4, x7, loop_start_55 # Branch back to loop start
+loop_exit_55: # Define loop exit label
+# --- Resuming code after Loop 55 ---
+
+
+# --- Starting Loop 60 (Depth: 2, break at 5, max 6) ---
+addi x1, x0, 6
+addi x4, x0, 5
+addi x6, x0, 0
+loop_start_60:
+beq x0, x0, skip_taken_140 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_140:
+beq x0, x0, skip_taken_141 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_141:
+add x4, x1, x2
+beq x0, x0, skip_taken_142 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_142:
+or x7, x5, x2
+bne x0, x0, skip_nottaken_143 # Never branch
+addi x0, x0, 0  # This instruction is executed
+skip_nottaken_143:
+sub x4, x7, x5
+or x4, x2, x7
+sw x1, 664(x3)
+bne x0, x0, skip_nottaken_144 # Never branch
+addi x0, x0, 0  # This instruction is executed
+skip_nottaken_144:
+sw x2, 616(x3)
+bne x0, x0, skip_nottaken_145 # Never branch
+addi x0, x0, 0  # This instruction is executed
+skip_nottaken_145:
+
+# --- Starting Loop 61 (Depth: 3, break at 2, max 7) ---
+addi x6, x0, 7
+addi x7, x0, 2
+addi x1, x0, 0
+loop_start_61:
+sw x7, 516(x3)
+beq x0, x0, skip_taken_146 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_146:
+beq x0, x0, skip_taken_147 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_147:
+sub x7, x4, x4
+beq x0, x0, skip_taken_148 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_148:
+lw x4, 264(x3)
+xor x7, x2, x1
+lw x7, 412(x3)
+beq x0, x0, skip_taken_149 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_149:
+lw x2, 564(x3)
+beq x0, x0, skip_taken_150 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_150:
+lw x4, 32(x3)
+beq x0, x0, skip_taken_151 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_151:
+lw x7, 104(x3)
+
+# --- Closing Loop 61 (Depth: 3) ---
+addi x1, x1, 1
+beq x1, x7, loop_exit_61  # Conditional break from loop
+blt x1, x6, loop_start_61 # Branch back to loop start
+loop_exit_61: # Define loop exit label
+# --- Resuming code after Loop 61 ---
+
+beq x0, x0, skip_taken_152 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_152:
+sub x7, x7, x4
+sw x7, 12(x3)
+bne x0, x0, skip_nottaken_153 # Never branch
+addi x0, x0, 0  # This instruction is executed
+skip_nottaken_153:
+
+# --- Closing Loop 60 (Depth: 2) ---
+addi x6, x6, 1
+beq x6, x4, loop_exit_60  # Conditional break from loop
+blt x6, x1, loop_start_60 # Branch back to loop start
+loop_exit_60: # Define loop exit label
+# --- Resuming code after Loop 60 ---
+
+beq x0, x0, skip_taken_154 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_154:
+lw x7, 644(x3)
+
+# --- Closing Loop 45 (Depth: 1) ---
+addi x4, x4, 1
+beq x4, x5, loop_exit_45  # Conditional break from loop
+blt x4, x6, loop_start_45 # Branch back to loop start
+loop_exit_45: # Define loop exit label
+# --- Resuming code after Loop 45 ---
+
+
+# --- Starting Loop 62 (Depth: 1, break at 4, max 9) ---
+addi x4, x0, 9
+addi x2, x0, 4
+addi x5, x0, 0
+loop_start_62:
+lw x6, 716(x3)
+
+# --- Closing Loop 62 (Depth: 1) ---
+addi x5, x5, 1
+beq x5, x2, loop_exit_62  # Conditional break from loop
+blt x5, x4, loop_start_62 # Branch back to loop start
+loop_exit_62: # Define loop exit label
+# --- Resuming code after Loop 62 ---
+
+bne x0, x0, skip_nottaken_155 # Never branch
+addi x0, x0, 0  # This instruction is executed
+skip_nottaken_155:
+beq x0, x0, skip_taken_156 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_156:
+sw x5, 532(x3)
+beq x0, x0, skip_taken_157 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_157:
+and x7, x2, x6
+and x4, x7, x5
+beq x0, x0, skip_taken_158 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_158:
+
+# --- Starting Loop 63 (Depth: 1, break at 5, max 10) ---
+addi x7, x0, 10
+addi x5, x0, 5
+addi x1, x0, 0
+loop_start_63:
+beq x0, x0, skip_taken_159 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_159:
+xor x5, x7, x7
+lw x4, 388(x3)
+sw x7, 372(x3)
+
+# --- Starting Loop 64 (Depth: 2, break at 4, max 9) ---
+addi x1, x0, 9
+addi x4, x0, 4
+addi x6, x0, 0
+loop_start_64:
+
+# --- Starting Loop 65 (Depth: 3, break at 3, max 5) ---
+addi x2, x0, 5
+addi x4, x0, 3
+addi x1, x0, 0
+loop_start_65:
+lw x4, 620(x3)
+and x1, x6, x5
+
+# --- Closing Loop 65 (Depth: 3) ---
+addi x1, x1, 1
+beq x1, x4, loop_exit_65  # Conditional break from loop
+blt x1, x2, loop_start_65 # Branch back to loop start
+loop_exit_65: # Define loop exit label
+# --- Resuming code after Loop 65 ---
+
+sll x2, x7, x7
+beq x0, x0, skip_taken_160 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_160:
+beq x0, x0, skip_taken_161 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_161:
+beq x0, x0, skip_taken_162 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_162:
+beq x0, x0, skip_taken_163 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_163:
+and x7, x2, x1
+or x7, x5, x5
+sw x6, 88(x3)
+
+# --- Closing Loop 64 (Depth: 2) ---
+addi x6, x6, 1
+beq x6, x4, loop_exit_64  # Conditional break from loop
+blt x6, x1, loop_start_64 # Branch back to loop start
+loop_exit_64: # Define loop exit label
+# --- Resuming code after Loop 64 ---
+
+
+# --- Starting Loop 66 (Depth: 2, break at 1, max 7) ---
+addi x7, x0, 7
+addi x2, x0, 1
+addi x6, x0, 0
+loop_start_66:
+bne x0, x0, skip_nottaken_164 # Never branch
+addi x0, x0, 0  # This instruction is executed
+skip_nottaken_164:
+add x2, x4, x7
+lw x6, 320(x3)
+lw x4, 956(x3)
+or x1, x2, x6
+
+# --- Starting Loop 67 (Depth: 3, break at 5, max 9) ---
+addi x6, x0, 9
+addi x4, x0, 5
+addi x2, x0, 0
+loop_start_67:
+beq x0, x0, skip_taken_165 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_165:
+lw x5, 520(x3)
+lw x5, 988(x3)
+
+# --- Closing Loop 67 (Depth: 3) ---
+addi x2, x2, 1
+beq x2, x4, loop_exit_67  # Conditional break from loop
+blt x2, x6, loop_start_67 # Branch back to loop start
+loop_exit_67: # Define loop exit label
+# --- Resuming code after Loop 67 ---
+
+lw x7, 868(x3)
+xor x5, x1, x4
+sw x4, 120(x3)
+lw x4, 780(x3)
+add x5, x4, x4
+beq x0, x0, skip_taken_166 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_166:
+
+# --- Starting Loop 68 (Depth: 3, break at 2, max 8) ---
+addi x6, x0, 8
+addi x7, x0, 2
+addi x1, x0, 0
+loop_start_68:
+
+# --- Closing Loop 68 (Depth: 3) ---
+addi x1, x1, 1
+beq x1, x7, loop_exit_68  # Conditional break from loop
+blt x1, x6, loop_start_68 # Branch back to loop start
+loop_exit_68: # Define loop exit label
+# --- Resuming code after Loop 68 ---
+
+beq x0, x0, skip_taken_167 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_167:
+beq x0, x0, skip_taken_168 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_168:
+sw x1, 780(x3)
+
+# --- Closing Loop 66 (Depth: 2) ---
+addi x6, x6, 1
+beq x6, x2, loop_exit_66  # Conditional break from loop
+blt x6, x7, loop_start_66 # Branch back to loop start
+loop_exit_66: # Define loop exit label
+# --- Resuming code after Loop 66 ---
+
+xor x7, x6, x4
+beq x0, x0, skip_taken_169 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_169:
+
+# --- Closing Loop 63 (Depth: 1) ---
+addi x1, x1, 1
+beq x1, x5, loop_exit_63  # Conditional break from loop
+blt x1, x7, loop_start_63 # Branch back to loop start
+loop_exit_63: # Define loop exit label
+# --- Resuming code after Loop 63 ---
+
+sub x5, x4, x2
+beq x0, x0, skip_taken_170 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_170:
+
+# --- Starting Loop 69 (Depth: 1, break at 4, max 7) ---
+addi x4, x0, 7
+addi x2, x0, 4
+addi x7, x0, 0
+loop_start_69:
+lw x5, 996(x3)
+
+# --- Closing Loop 69 (Depth: 1) ---
+addi x7, x7, 1
+beq x7, x2, loop_exit_69  # Conditional break from loop
+blt x7, x4, loop_start_69 # Branch back to loop start
+loop_exit_69: # Define loop exit label
+# --- Resuming code after Loop 69 ---
+
+sll x5, x5, x2
+lw x1, 492(x3)
+beq x0, x0, skip_taken_171 # Always branch
+addi x0, x0, 0  # This instruction is skipped
+skip_taken_171:
+
+# --- Final cleanup: Closing all remaining open loops ---
 
 # Program exit
-addi a0, zero, 0     # Set exit code to 0
-addi a7, zero, 93    # Exit syscall number
+addi x0, x0, 0   # Set exit code to 0
+addi x0, x0, 93  # Exit syscall number
 ecall

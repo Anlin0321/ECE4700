@@ -1,0 +1,10 @@
+seed: 101
+output: "simple.s"
+codelen: 100
+hazard: 0.1
+weights: [0.1, 0.1, 0.4, 0.2, 0.2]
+regnum: 8
+membase: "0x1000"
+max_loop_depth: 3
+loop_exit_prob: 0.1
+loop_insert_prob: 0.1

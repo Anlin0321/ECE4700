@@ -1,10 +1,10 @@
 seed: 101
 output: "high_taken.s"
-codelen: 1500
+codelen: 1000
 hazard: 0.3
 weights: [0.35, 0.05, 0.3, 0.15, 0.15]
 regnum: 8
-membase: "0x1000"
+membase: "0x2000"
 max_loop_depth: 4
 loop_exit_prob: 0.15
 loop_insert_prob: 0.25

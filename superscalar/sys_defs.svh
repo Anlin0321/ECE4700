@@ -315,15 +315,21 @@ typedef struct {
 typedef struct {
     XLEN_t              NPC          [`IW_RANGE];
     XLEN_t              PC           [`IW_RANGE];
+
     XLEN_t              rs1_value    [`IW_RANGE];
     XLEN_t              rs2_value    [`IW_RANGE];
+
     ALU_OPA_SELECT      opa_select   [`IW_RANGE];
     ALU_OPB_SELECT      opb_select   [`IW_RANGE];
-    logic [31:0]        inst         [`IW_RANGE];
+    INST                inst         [`IW_RANGE];
+
+    logic [4:0]         dest_reg_idx [`IW_RANGE];
+    ALU_FUNC            alu_func     [`IW_RANGE];
     logic               rd_mem       [`IW_RANGE];
     logic               wr_mem       [`IW_RANGE];
-    logic [4:0]         dest_reg_idx [`IW_RANGE];
-    logic [2:0]         mem_size     [`IW_RANGE];
+    logic               cond_branch  [`IW_RANGE];
+	logic               uncond_branch[`IW_RANGE];
+//    logic [2:0]         mem_size     [`IW_RANGE];
     logic               halt         [`IW_RANGE];
     logic               illegal      [`IW_RANGE];
     logic               csr_op       [`IW_RANGE];

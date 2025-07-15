@@ -13,47 +13,61 @@
 
 `include "sys_defs.svh"
 
-module if_stage
-(
-    input  logic          clk, rst,
+
+module if_stage (
+    input  logic                          clk, rst,
     // ---- pipeline control ----
-    input  logic          stall,
-    input  logic          flush,
-    input  XLEN_t         new_PC,       // redirected PC on branch
-    // ---- I-cache interface ----
-    output XLEN_t         icache_addr,
-    input  logic [95:0]   icache_data,  // 3 ¡Á 32-bit words per hit
+    input  logic                          stall,
+    input  logic                          flush,
+    input  XLEN_t                         new_PC,        // redirected PC on branch
+    // ---- I-cache interface (superscalar) ----
+    output logic [`ISSUE_WIDTH-1:0] [1:0] proc2Icache_command, 
+    output XLEN_t [`ISSUE_WIDTH-1:0]      proc2Icache_addr,
+    input  logic [`ISSUE_WIDTH-1:0] [3:0] mem2Icache_response,
+    input  logic [`ISSUE_WIDTH-1:0] [63:0] mem2Icache_data,
+    input  logic [`ISSUE_WIDTH-1:0] [3:0] mem2Icache_tag,
     // ---- IF/ID latch ----
-    output IF_ID_PACKET   if_id_out
+    output IF_ID_PACKET                   if_id_out
 );
 
     // ---- program counter ----
     XLEN_t PC_q, PC_n;
 
     always_ff @(posedge clk or posedge rst) begin
-        if (rst) PC_q <= `PC_RESET;
-        else if (!stall) PC_q <= PC_n;
+        if (rst) 
+            PC_q <= `PC_RESET;
+        else if (!stall) 
+            PC_q <= PC_n;
     end
 
     // next PC logic
     always_comb begin
-        if (flush)                 PC_n = new_PC;
-        else                       PC_n = PC_q + 12;   // 3 instructions
+        if (flush) 
+            PC_n = new_PC;                   // branch redirection
+        else 
+            PC_n = PC_q + 4*`ISSUE_WIDTH;    // advance by ISSUE_WIDTH instructions
     end
 
-    // ---- I-cache request ----
-    assign icache_addr = {PC_q[31:2], 2'b00};          // word-aligned
-
-    // ---- split line into 3 instructions ----
+    // ---- I-cache requests ----
     genvar w;
     generate
-        for (w = 0; w < `ISSUE_WIDTH; w++) begin : G_SPLIT
-            assign if_id_out.inst [w]  = icache_data >> (w*32);
-            assign if_id_out.PC   [w]  = PC_q + w*4;
-            assign if_id_out.NPC  [w]  = PC_q + (w+1)*4;
-            assign if_id_out.valid[w]  = ~stall & ~flush;
+        for (w = 0; w < `ISSUE_WIDTH; w++) begin : G_ICACHE
+            // Send fetch request for this instruction slot
+            assign proc2Icache_command[w] = (stall || flush) ? BUS_NONE : BUS_LOAD;
+            assign proc2Icache_addr[w]    = PC_q + w*4;  // word-aligned address
+            
+            // Process cache response
+            assign if_id_out.inst [w] = mem2Icache_data[w][31:0];  // use lower 32 bits
+            assign if_id_out.PC   [w] = PC_q + w*4;
+            assign if_id_out.NPC  [w] = PC_q + (w+1)*4;
+            
+            // Valid if cache responded and no stall/flush
+            assign if_id_out.valid[w] = (mem2Icache_response[w] != 0) && 
+                                       ~stall && ~flush && 
+                                       (mem2Icache_tag[w] == mem2Icache_response[w]);
         end
     endgenerate
+
 endmodule
 
 //module if_stage(

@@ -229,15 +229,15 @@ module id_stage (
     input  IF_ID_PACKET   if_id_in,
 
     // ---- scoreboard feedback ----
-    output logic          issue_valid [`ISSUE_WIDTH-1:0],
-    output logic [4:0]    issue_rs1   [`ISSUE_WIDTH-1:0],
-    output logic [4:0]    issue_rs2   [`ISSUE_WIDTH-1:0],
+    output logic [`ISSUE_WIDTH-1:0]         issue_valid,
+    output logic [`ISSUE_WIDTH-1:0][4:0]    issue_rs1,
+    output logic [`ISSUE_WIDTH-1:0][4:0]    issue_rs2,
 
     // ---- regfile interface ----
-    output logic [4:0]    rf_rs1_idx  [`ISSUE_WIDTH-1:0],
-    output logic [4:0]    rf_rs2_idx  [`ISSUE_WIDTH-1:0],
-    input  XLEN_t         rf_rs1_val  [`ISSUE_WIDTH-1:0],
-    input  XLEN_t         rf_rs2_val  [`ISSUE_WIDTH-1:0],
+    output logic [`ISSUE_WIDTH-1:0][4:0]    rf_rs1_idx,
+    output logic [`ISSUE_WIDTH-1:0][4:0]    rf_rs2_idx,
+    input  XLEN_t [`ISSUE_WIDTH-1:0]        rf_rs1_val,
+    input  XLEN_t [`ISSUE_WIDTH-1:0]        rf_rs2_val,
 
     // ---- ID/EX output ----
     output ID_EX_PACKET   id_ex_out
@@ -277,7 +277,7 @@ module id_stage (
         );
 
         // ---- Other simple fields ----
-        assign id_ex_out.mem_size[w] = 3'd0; // change if you add byte/half ops
+//        assign id_ex_out.mem_size[w] = 3'd0; // change if you add byte/half ops
 
         // ---- NPC / PC passthrough ----
         assign id_ex_out.NPC[w] = if_id_in.NPC[w];

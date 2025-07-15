@@ -16,17 +16,17 @@
 
 module regfile
 (
-    // ---- read side: 3 instructions ¡Á 2 source regs ----
-    input  logic [4:0]            rda_idx [`ISSUE_WIDTH-1:0],
-    input  logic [4:0]            rdb_idx [`ISSUE_WIDTH-1:0],
-    output logic [`XLEN-1:0]      rda_out[`ISSUE_WIDTH-1:0],
-    output logic [`XLEN-1:0]      rdb_out[`ISSUE_WIDTH-1:0],
+    // ---- read side: 3 instructions && 2 source regs ----
+    input  logic [`ISSUE_WIDTH-1:0] [4:0]            rda_idx,
+    input  logic [`ISSUE_WIDTH-1:0] [4:0]            rdb_idx,
+    output logic [`ISSUE_WIDTH-1:0] [`XLEN-1:0]      rda_out,
+    output logic [`ISSUE_WIDTH-1:0] [`XLEN-1:0]      rdb_out,
 
     // ---- write side: up to 3 destinations per cycle ----
-    input  logic                  clk,
-    input  logic [2:0]            wr_en,
-    input  logic [4:0]            wr_idx [2:0],
-    input  logic [`XLEN-1:0]      wr_data[2:0]
+    input  logic                                    clk,
+    input  logic [`ISSUE_WIDTH-1:0]                 wr_en,
+    input  logic [`ISSUE_WIDTH-1:0] [4:0]           wr_idx ,
+    input  logic [`ISSUE_WIDTH-1:0] [`XLEN-1:0]     wr_data
 );
 
     // ---- storage array ----
@@ -35,7 +35,7 @@ module regfile
     // ---- three write ports (priority 0 > 1 > 2) ----
     integer i;
     always_ff @(posedge clk) begin
-        for (i = 0; i < 3; i++) begin
+        for (i = 0; i < `ISSUE_WIDTH; i++) begin
             if (wr_en[i] && (wr_idx[i] != 5'd0))
                 rf[wr_idx[i]] <= wr_data[i];
         end

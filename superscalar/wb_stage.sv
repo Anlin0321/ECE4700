@@ -22,9 +22,9 @@ module wb_stage
     input  MEM_WB_PACKET  mem_wb_in,
 
     // ---- regfile write-back ----
-    output logic [2:0]    rf_wr_en,
-    output logic [4:0]    rf_wr_idx [2:0],
-    output XLEN_t         rf_wr_data[2:0],
+    output logic  [`ISSUE_WIDTH-1:0]        rf_wr_en,
+    output logic  [`ISSUE_WIDTH-1:0][4:0]   rf_wr_idx,
+    output XLEN_t [`ISSUE_WIDTH-1:0]        rf_wr_data,
 
     // ---- global halt/illegal ----
     output logic          halt_out,

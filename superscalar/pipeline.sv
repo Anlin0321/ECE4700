@@ -16,21 +16,34 @@
 
 `include "sys_defs.svh"
 
-module pipeline
-(
+module pipeline (
     input  logic clk, rst,
-    // ---- I-cache ----
-    output XLEN_t icache_addr,
-    input  logic [95:0] icache_data
+    // ---- I-cache (superscalar) ----
+    output logic [`ISSUE_WIDTH-1:0] [1:0]   proc2Icache_command, 
+    output XLEN_t [`ISSUE_WIDTH-1:0]        proc2Icache_addr,
+    input  logic [`ISSUE_WIDTH-1:0] [3:0]   mem2Icache_response,
+    input  logic [`ISSUE_WIDTH-1:0] [63:0]  mem2Icache_data,
+    input  logic [`ISSUE_WIDTH-1:0] [3:0]   mem2Icache_tag,
+
+    // ---- D-cache (superscalar) ----
+    output logic [`ISSUE_WIDTH-1:0] [1:0]   proc2Dcache_command,
+    output XLEN_t [`ISSUE_WIDTH-1:0]        proc2Dcache_addr,
+    output logic [`ISSUE_WIDTH-1:0] [63:0]  proc2Dcache_data,
+`ifndef CACHE_MODE
+    output MEM_SIZE [`ISSUE_WIDTH-1:0]      proc2Dcache_size,
+`endif
+    input  logic [`ISSUE_WIDTH-1:0] [3:0]   mem2Dcache_response,
+    input  logic [`ISSUE_WIDTH-1:0] [63:0]  mem2Dcache_data,
+    input  logic [`ISSUE_WIDTH-1:0] [3:0]   mem2Dcache_tag
 );
 
     // ---------------------------------------------------------
-    // Stage registers
+    // Stage registers (now ISSUE_WIDTH arrays)
     // ---------------------------------------------------------
-    IF_ID_PACKET   if_id_q;
-    ID_EX_PACKET   id_ex_q;
-    EX_MEM_PACKET  ex_mem_q;
-    MEM_WB_PACKET  mem_wb_q;
+    IF_ID_PACKET   if_packet, if_id_packet;
+    ID_EX_PACKET   id_packet, id_ex_packet;
+    EX_MEM_PACKET  ex_packet, ex_mem_packet;
+    MEM_WB_PACKET  mem_packet, mem_wb_packet;
 
     // ---------------------------------------------------------
     // Control wires
@@ -38,30 +51,148 @@ module pipeline
     logic          stall, flush;
     logic          branch_take;
     XLEN_t         branch_target;
+    
+    logic if_id_enable;
+    logic id_ex_enable;
+    logic ex_mem_enable;
 
-    // ---------------------------------------------------------
-    // Instantiate stages
-    // ---------------------------------------------------------
+////////////////////////////////////////////////////
+////                                              //
+////                  Monitor                     //
+////                                              //
+////////////////////////////////////////////////////
+
+    function automatic void print_if_id_packet(input IF_ID_PACKET pkt);
+        $display("IF_ID_PACKET:");
+        for (int i = 0; i < `ISSUE_WIDTH; i++) begin
+            $display("  Lane %0d:", i);
+            $display("    valid: %b", pkt.valid[i]);
+            $display("    inst:  %h", pkt.inst[i]);
+            $display("    NPC:   %h", pkt.NPC[i]);
+            $display("    PC:    %h", pkt.PC[i]);
+        end
+    endfunction
+
+    // Helper function to print ID_EX_PACKET
+    function automatic void print_id_ex_packet(input ID_EX_PACKET pkt);
+        $display("ID_EX_PACKET:");
+        for (int i = 0; i < `ISSUE_WIDTH; i++) begin
+            $display("  Lane %0d:", i);
+            $display("    valid:        %b", pkt.valid[i]);
+            $display("    inst:         %h", pkt.inst[i]);
+            $display("    NPC:          %h", pkt.NPC[i]);
+            $display("    PC:           %h", pkt.PC[i]);
+            $display("    rs1_value:    %h", pkt.rs1_value[i]);
+            $display("    rs2_value:    %h", pkt.rs2_value[i]);
+            $display("    dest_reg_idx: %h", pkt.dest_reg_idx[i]);
+            $display("    alu_func:     %s", pkt.alu_func[i].name());
+            $display("    rd_mem:       %b", pkt.rd_mem[i]);
+            $display("    wr_mem:       %b", pkt.wr_mem[i]);
+            $display("    cond_branch:  %b", pkt.cond_branch[i]);
+            $display("    uncond_branch:%b", pkt.uncond_branch[i]);
+            $display("    halt:         %b", pkt.halt[i]);
+            $display("    illegal:      %b", pkt.illegal[i]);
+            $display("    csr_op:       %b", pkt.csr_op[i]);
+        end
+    endfunction
+
+    // Helper function to print EX_MEM_PACKET
+    function automatic void print_ex_mem_packet(input EX_MEM_PACKET pkt);
+        $display("EX_MEM_PACKET:");
+        for (int i = 0; i < `ISSUE_WIDTH; i++) begin
+            $display("  Lane %0d:", i);
+            $display("    valid:        %b", pkt.valid[i]);
+            $display("    alu_result:   %h", pkt.alu_result[i]);
+            $display("    NPC:          %h", pkt.NPC[i]);
+            $display("    take_branch:  %b", pkt.take_branch[i]);
+            $display("    rs2_value:    %h", pkt.rs2_value[i]);
+            $display("    rd_mem:       %b", pkt.rd_mem[i]);
+            $display("    wr_mem:       %b", pkt.wr_mem[i]);
+            $display("    dest_reg_idx: %h", pkt.dest_reg_idx[i]);
+            $display("    halt:         %b", pkt.halt[i]);
+            $display("    illegal:      %b", pkt.illegal[i]);
+            $display("    csr_op:       %b", pkt.csr_op[i]);
+            $display("    mem_size:     %b", pkt.mem_size[i]);
+        end
+    endfunction
+
+    // Helper function to print MEM_WB_PACKET
+    function automatic void print_mem_wb_packet(input MEM_WB_PACKET pkt);
+        $display("MEM_WB_PACKET:");
+        for (int i = 0; i < `ISSUE_WIDTH; i++) begin
+            $display("  Lane %0d:", i);
+            $display("    valid:        %b", pkt.valid[i]);
+            $display("    wb_data:      %h", pkt.wb_data[i]);
+            $display("    dest_reg_idx: %h", pkt.dest_reg_idx[i]);
+            $display("    halt:         %b", pkt.halt[i]);
+            $display("    illegal:      %b", pkt.illegal[i]);
+            $display("    csr_op:       %b", pkt.csr_op[i]);
+        end
+    endfunction
+
+    // Print packets at each stage transition
+    always @(posedge clk) begin
+        if (rst) begin
+            $display("\n[%0t] SYSTEM RESET", $time);
+        end else begin
+            $display("\n[%0t] CYCLE %0d", $time, $time/10);
+
+            // IF/ID Stage
+            $display("--- IF Stage Output ---");
+            print_if_id_packet(if_packet);
+
+            // ID/EX Stage
+            $display("--- ID Stage Output ---");
+            print_id_ex_packet(id_packet);
+
+            // EX/MEM Stage
+            $display("--- EX Stage Output ---");
+            print_ex_mem_packet(ex_packet);
+
+            // MEM/WB Stage
+            $display("--- MEM Stage Output ---");
+            print_mem_wb_packet(mem_packet);
+ 
+            // Final WB Stage
+            $display("--- WB Stage Output ---");
+            for (int i = 0; i < `ISSUE_WIDTH; i++) begin
+                if (rf_wr_en[i]) begin
+                    $display("  Writing to reg %0d: data=%h", 
+                            rf_wr_idx[i], rf_wr_data[i]);
+                end
+            end
+        end
+    end
+
+
+////////////////////////////////////////////////////
+////                                              //
+////                  IF-Stage                    //
+////                                              //
+////////////////////////////////////////////////////
     if_stage U_IF (
-        .clk        (clk),
-        .rst        (rst),
-        .stall      (stall),
-        .flush      (flush),
-        .new_PC     (branch_target),
-        .icache_addr(icache_addr),
-        .icache_data(icache_data),
-        .if_id_out  (if_id_q)
+        .clk                 (clk),
+        .rst                 (rst),
+        .stall               (stall),
+        .flush               (flush),
+        .new_PC              (branch_target),
+        .proc2Icache_command(proc2Icache_command),
+        .proc2Icache_addr    (proc2Icache_addr),
+        .mem2Icache_response(mem2Icache_response),
+        .mem2Icache_data    (mem2Icache_data),
+        .mem2Icache_tag     (mem2Icache_tag),
+        .if_id_out           (if_packet)
     );
 
     // ---- regfile shared between ID & WB ----
-    logic [4:0]    rs1_idx [`ISSUE_WIDTH-1:0];
-    logic [4:0]    rs2_idx [`ISSUE_WIDTH-1:0];
-    XLEN_t         rs1_val [`ISSUE_WIDTH-1:0];
-    XLEN_t         rs2_val [`ISSUE_WIDTH-1:0];
+    logic [`ISSUE_WIDTH-1:0] [4:0] rs1_idx;
+    logic [`ISSUE_WIDTH-1:0] [4:0] rs2_idx;
+    XLEN_t [`ISSUE_WIDTH-1:0]      rs1_val;
+    XLEN_t [`ISSUE_WIDTH-1:0]      rs2_val;
 
-    logic [2:0]    rf_wr_en;
-    logic [4:0]    rf_wr_idx [2:0];
-    XLEN_t         rf_wr_data[2:0];
+    logic [`ISSUE_WIDTH-1:0]        rf_wr_en;
+    logic [`ISSUE_WIDTH-1:0] [4:0]  rf_wr_idx;
+    XLEN_t [`ISSUE_WIDTH-1:0]       rf_wr_data;
 
     regfile U_RF (
         .rda_idx   (rs1_idx),
@@ -76,7 +207,7 @@ module pipeline
 
     // ---- scoreboard ----
     logic sb_stall;
-    logic issue_valid [`ISSUE_WIDTH-1:0];
+    logic [`ISSUE_WIDTH-1:0] issue_valid;
     scoreboard U_SB (
         .clk          (clk),
         .rst          (rst),
@@ -88,43 +219,186 @@ module pipeline
         .stall        (sb_stall)
     );
 
+////////////////////////////////////////////////////
+////                                              //
+////            IF/ID Pipeline Register           //
+////                                              //
+////////////////////////////////////////////////////
+
+	assign if_id_enable = 1'b1; // always enabled
+	// synopsys sync_set_reset "reset"
+	always_ff @(posedge clk) begin
+		if (rst) begin 
+			for (int i = 0; i < `ISSUE_WIDTH; i++) begin
+                if_id_packet.valid[i] <= 1'b0;
+                if_id_packet.inst[i]  <= `NOP;
+                if_id_packet.NPC[i]   <= 0;
+                if_id_packet.PC[i]    <= 0;
+            end
+		end else begin// if (reset)
+			if (if_id_enable) begin
+				if_id_packet <= `SD if_packet; 
+			end // if (if_id_enable)	
+		end
+	end // always
+
+////////////////////////////////////////////////////
+////                                              //
+////                  ID-Stage                    //
+////                                              //
+////////////////////////////////////////////////////
+
     id_stage U_ID (
-        .clk        (clk),
-        .rst        (rst),
-        .if_id_in   (if_id_q),
-        .issue_valid(issue_valid),
-        .issue_rs1  (rs1_idx),
-        .issue_rs2  (rs2_idx),
-        .rf_rs1_idx (rs1_idx),
-        .rf_rs2_idx (rs2_idx),
-        .rf_rs1_val (rs1_val),
-        .rf_rs2_val (rs2_val),
-        .id_ex_out  (id_ex_q)
+        .clk         (clk),
+        .rst         (rst),
+        .if_id_in    (if_id_packet),
+        .issue_valid (issue_valid),
+        .rf_rs1_idx  (rs1_idx),
+        .rf_rs2_idx  (rs2_idx),
+        .rf_rs1_val  (rs1_val),
+        .rf_rs2_val  (rs2_val),
+        .id_ex_out   (id_packet)
     );
+    
+////////////////////////////////////////////////////
+////                                              //
+////            ID/EX Pipeline Register           //
+////                                              //
+////////////////////////////////////////////////////
+
+//	assign id_ex_NPC        = id_ex_packet.NPC;
+//	assign id_ex_IR         = id_ex_packet.inst;
+//	assign id_ex_valid_inst = id_ex_packet.valid;
+
+	assign id_ex_enable = 1'b1; // always enabled
+	// synopsys sync_set_reset "reset"
+	always_ff @(posedge clk) begin
+		if (rst) begin
+		    for (int i = 0; i < `ISSUE_WIDTH; i++) begin
+                id_ex_packet.NPC[i]           <= {`XLEN{1'b0}};
+                id_ex_packet.PC[i]            <= {`XLEN{1'b0}};
+                id_ex_packet.rs1_value[i]     <= {`XLEN{1'b0}};
+                id_ex_packet.rs2_value[i]     <= {`XLEN{1'b0}};
+                id_ex_packet.opa_select[i]    <= OPA_IS_RS1;  // Default to using RS1
+                id_ex_packet.opb_select[i]    <= OPB_IS_RS2;  // Default to using RS2
+                id_ex_packet.inst[i]         <= `NOP;        // Insert NOP instructions
+                id_ex_packet.dest_reg_idx[i]  <= `ZERO_REG;   // Default to zero register
+                id_ex_packet.alu_func[i]      <= ALU_ADD;     // Default to ADD operation
+                id_ex_packet.rd_mem[i]       <= 1'b0;        // No memory read
+                id_ex_packet.wr_mem[i]       <= 1'b0;        // No memory write
+                id_ex_packet.cond_branch[i]  <= 1'b0;        // No conditional branch
+                id_ex_packet.uncond_branch[i] <= 1'b0;        // No unconditional branch
+                id_ex_packet.halt[i]         <= 1'b0;        // Not halted
+                id_ex_packet.illegal[i]      <= 1'b0;        // Legal instruction
+                id_ex_packet.csr_op[i]       <= 1'b0;        // No CSR operation
+                id_ex_packet.valid[i]        <= 1'b0;        // Invalid instruction
+			end
+		end else begin // if (reset)
+			if (id_ex_enable) begin
+				id_ex_packet <= `SD id_packet;
+			end // if
+		end // else: !if(reset)
+	end // always
+
+////////////////////////////////////////////////////
+////                                              //
+////                  EX-Stage                    //
+////                                              //
+////////////////////////////////////////////////////
 
     ex_stage U_EX (
-        .clk        (clk),
-        .rst        (rst),
-        .id_ex_in   (id_ex_q),
-        .ex_mem_out (ex_mem_q),
-        .branch_taken(branch_take),
-        .branch_target(branch_target)
+        .clk            (clk),
+        .rst            (rst),
+        .id_ex_in       (id_ex_packet),
+        .ex_mem_out     (ex_packet),
+        .branch_taken   (branch_take),
+        .branch_target  (branch_target)
     );
+
+////////////////////////////////////////////////////
+////                                              //
+////           EX/MEM Pipeline Register           //
+////                                              //
+////////////////////////////////////////////////////
+	
+//	assign ex_mem_NPC        = ex_mem_packet.NPC;
+//	assign ex_mem_valid_inst = ex_mem_packet.valid;
+
+	assign ex_mem_enable = 1'b1; // always enabled
+	// synopsys sync_set_reset "reset"
+	always_ff @(posedge clk) begin
+		if (rst) begin
+//			ex_mem_IR     <= `SD `NOP;
+			for (int i = 0; i < `ISSUE_WIDTH; i++) begin
+                ex_mem_packet.alu_result[i]   <= 0;
+                ex_mem_packet.NPC[i]          <= 0;
+                ex_mem_packet.take_branch[i] <= 1'b0;
+                ex_mem_packet.rs2_value[i]    <= 0;
+                ex_mem_packet.rd_mem[i]      <= 1'b0;
+                ex_mem_packet.wr_mem[i]      <= 1'b0;
+                ex_mem_packet.dest_reg_idx[i] <= `ZERO_REG;
+                ex_mem_packet.halt[i]        <= 1'b0;
+                ex_mem_packet.illegal[i]     <= 1'b0;
+                ex_mem_packet.csr_op[i]      <= 1'b0;
+                ex_mem_packet.valid[i]       <= 1'b0;
+                ex_mem_packet.mem_size[i]    <= 3'b0;
+            end
+		end else begin
+			if (ex_mem_enable)   begin
+				// these are forwarded directly from ID/EX registers, only for debugging purposes
+//				ex_mem_IR     <= `SD id_ex_IR;
+				// EX outputs
+				ex_mem_packet <= `SD ex_packet;
+			end // if
+		end // else: !if(reset)
+	end // always
+
+////////////////////////////////////////////////////
+////                                              //
+////                 MEM-Stage                    //
+////                                              //
+////////////////////////////////////////////////////
 
     mem_stage U_MEM (
-        .clk        (clk),
-        .rst        (rst),
-        .ex_mem_in  (ex_mem_q),
-        .mem_rd     (/* connect to data-mem */),
-        .mem_wr     (/* connect to data-mem */),
-        .mem_addr   (/* */),
-        .mem_wdata  (/* */),
-        .mem_rdata  (32'd0),  // stub
-        .mem_wb_out (mem_wb_q)
+        .clk                (clk),
+        .rst                (rst),
+        .ex_mem_in          (ex_mem_packet),
+        .proc2Dcache_command(proc2Dcache_command),
+        .proc2Dcache_addr   (proc2Dcache_addr),
+        .proc2Dcache_data   (proc2Dcache_data),
+`ifndef CACHE_MODE
+        .proc2Dcache_size   (proc2Dcache_size),
+`endif
+        .mem2Dcache_response(mem2Dcache_response),
+        .mem2Dcache_data   (mem2Dcache_data),
+        .mem2Dcache_tag    (mem2Dcache_tag),
+        .mem_wb_out        (mem_packet)
     );
 
+////////////////////////////////////////////////////
+////                                              //
+////           MEM/WB Pipeline Register           //
+////                                              //
+////////////////////////////////////////////////////
+
+    always_ff @(posedge clk) begin
+            if (rst) begin
+    //			ex_mem_IR     <= `SD `NOP;
+                for (int i = 0; i < `ISSUE_WIDTH; i++) begin
+                    mem_wb_packet.wb_data[i]      <= 0;            // Zero writeback data
+                    mem_wb_packet.dest_reg_idx[i] <= `ZERO_REG;    // Target zero register
+                    mem_wb_packet.halt[i]        <= 1'b0;         // Not halted
+                    mem_wb_packet.illegal[i]     <= 1'b0;         // Legal instruction
+                    mem_wb_packet.csr_op[i]      <= 1'b0;         // No CSR operation
+                    mem_wb_packet.valid[i]       <= 1'b0;         // Invalid instruction
+                end
+            end else begin
+                 mem_wb_packet <= `SD mem_packet;
+            end // else: !if(reset)
+        end // always
+    
     wb_stage U_WB (
-        .mem_wb_in  (mem_wb_q),
+        .mem_wb_in  (mem_wb_packet),
         .rf_wr_en   (rf_wr_en),
         .rf_wr_idx  (rf_wr_idx),
         .rf_wr_data (rf_wr_data),

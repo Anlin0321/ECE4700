@@ -406,11 +406,30 @@ module pipeline (
         .illegal_out(/* unused */)
     );
 
+    // ---- Stalling Detection Unit ----
+    stalling_detection_unit U_STALL (
+        .if_id_q    (if_id_q),
+        .id_ex_q    (id_ex_q),
+        .stall      (stall_signal)  // Combine with other stall sources
+    );
+
+    // ---- forwarding unit ----
+    forwarding_unit U_FU (
+        .id_ex_q        (id_ex_q),
+        .ex_mem_q       (ex_mem_q),
+        .mem_wb_q       (mem_wb_q),
+        .forwardA_stage (forwardA_stage),
+        .forwardA_slot  (forwardA_slot),
+        .forwardB_stage (forwardB_stage),
+        .forwardB_slot  (forwardB_slot)
+    );
+
     // ---------------------------------------------------------
     // Global stall / flush
     // ---------------------------------------------------------
     assign flush = branch_take;
-    assign stall = sb_stall;   // + other sources (e.g., cache miss)
+//    assign stall = sb_stall;   // + other sources (e.g., cache miss)
+    assign stall = sb_stall | any_valid(stall_signal);
 
 endmodule
 

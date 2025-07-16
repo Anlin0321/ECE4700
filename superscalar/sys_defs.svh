@@ -273,7 +273,8 @@ typedef logic [`XLEN-1:0] XLEN_t;
 
 typedef struct {
     logic               valid [`IW_RANGE];
-    logic [31:0]        inst  [`IW_RANGE];
+//    logic [31:0]        inst  [`IW_RANGE];
+    INST                inst  [`IW_RANGE];
     XLEN_t              NPC   [`IW_RANGE];
     XLEN_t              PC    [`IW_RANGE];
 } IF_ID_PACKET;

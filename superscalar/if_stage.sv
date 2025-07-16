@@ -57,7 +57,7 @@ module if_stage (
             assign proc2Icache_addr[w]    = PC_q + w*4;  // word-aligned address
             
             // Process cache response
-            assign if_id_out.inst [w] = mem2Icache_data[w][31:0];  // use lower 32 bits
+            assign if_id_out.inst [w] = mem2Icache_data[w][31:0];  // FIXME: use lower 32 bits?
             assign if_id_out.PC   [w] = PC_q + w*4;
             assign if_id_out.NPC  [w] = PC_q + (w+1)*4;
             

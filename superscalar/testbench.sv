@@ -7,9 +7,6 @@
 //                                                                     //
 //                                                                     //
 /////////////////////////////////////////////////////////////////////////
-
-
-
 `timescale 1ns/100ps
 
 import "DPI-C" function void print_header(string str);
@@ -22,48 +19,48 @@ import "DPI-C" function void print_membus(int proc2mem_command, int mem2proc_res
 						 			     int proc2mem_data_hi, int proc2mem_data_lo);
 import "DPI-C" function void print_close();
 
-
 module testbench;
 
-    // variables used in the testbench
+    // ------------------------------------------------------------------
+    //  Test-bench variables
+    // ------------------------------------------------------------------
     logic        clock;
     logic        reset;
     logic [31:0] clock_count;
-    logic [63:0] debug_counter;  // counter for timeout
-    
-    // Superscalar memory interfaces
-    // Instruction Cache Interface
-    logic [`ISSUE_WIDTH-1:0] [1:0]   proc2Icache_command; 
-    XLEN_t [`ISSUE_WIDTH-1:0]        proc2Icache_addr;
-    logic [`ISSUE_WIDTH-1:0] [3:0]   mem2Icache_response;
-    logic [`ISSUE_WIDTH-1:0] [63:0]  mem2Icache_data;
-    logic [`ISSUE_WIDTH-1:0] [3:0]   mem2Icache_tag;
-    
-    // Data Cache Interface
-    logic [`ISSUE_WIDTH-1:0] [1:0]   proc2Dcache_command;
-    XLEN_t [`ISSUE_WIDTH-1:0]        proc2Dcache_addr;
-    logic [`ISSUE_WIDTH-1:0] [63:0]  proc2Dcache_data;
-    logic [`ISSUE_WIDTH-1:0] [3:0]   mem2Dcache_response;
-    logic [`ISSUE_WIDTH-1:0] [63:0]  mem2Dcache_data;
-    logic [`ISSUE_WIDTH-1:0] [3:0]   mem2Dcache_tag;
+    logic [63:0] debug_counter;
+
+    // ------------------------------------------------------------------
+    //  Superscalar memory interfaces (already declared in core)
+    // ------------------------------------------------------------------
+    logic [`ISSUE_WIDTH-1:0][1:0]   proc2Icache_command;
+    XLEN_t [`ISSUE_WIDTH-1:0]       proc2Icache_addr;
+    logic [`ISSUE_WIDTH-1:0][3:0]   mem2Icache_response;
+    logic [`ISSUE_WIDTH-1:0][63:0]  mem2Icache_data;
+    logic [`ISSUE_WIDTH-1:0][3:0]   mem2Icache_tag;
+
+    logic [`ISSUE_WIDTH-1:0][1:0]   proc2Dcache_command;
+    XLEN_t [`ISSUE_WIDTH-1:0]       proc2Dcache_addr;
+    logic [`ISSUE_WIDTH-1:0][63:0]  proc2Dcache_data;
+    logic [`ISSUE_WIDTH-1:0][3:0]   mem2Dcache_response;
+    logic [`ISSUE_WIDTH-1:0][63:0]  mem2Dcache_data;
+    logic [`ISSUE_WIDTH-1:0][3:0]   mem2Dcache_tag;
 `ifndef CACHE_MODE
-    MEM_SIZE [`ISSUE_WIDTH-1:0]      proc2Dcache_size;
+    MEM_SIZE [`ISSUE_WIDTH-1:0]     proc2Dcache_size;
 `endif
-    
-    // Instantiate the Pipeline
-    pipeline core(
-        // Inputs
+
+    // ------------------------------------------------------------------
+    //  DUT (Pipeline)
+    // ------------------------------------------------------------------
+    pipeline core (
         .clk                (clock),
         .rst                (reset),
-        
-        // I-cache Interface
+
         .proc2Icache_command(proc2Icache_command),
         .proc2Icache_addr   (proc2Icache_addr),
         .mem2Icache_response(mem2Icache_response),
         .mem2Icache_data    (mem2Icache_data),
         .mem2Icache_tag     (mem2Icache_tag),
-        
-        // D-cache Interface
+
         .proc2Dcache_command(proc2Dcache_command),
         .proc2Dcache_addr   (proc2Dcache_addr),
         .proc2Dcache_data   (proc2Dcache_data),
@@ -74,124 +71,93 @@ module testbench;
         .mem2Dcache_data    (mem2Dcache_data),
         .mem2Dcache_tag     (mem2Dcache_tag)
     );
-    
-    // Instantiate the Instruction Memory
-    supermem mem (
-        // Inputs
-        .clk               (clock),
+
+    // ------------------------------------------------------------------
+    //  Passthrough memory (zero latency)
+    // ------------------------------------------------------------------
+    passthru_mem U_MEM (
+        .clk                (clock),
         .proc2Imem_command  (proc2Icache_command),
         .proc2Imem_addr     (proc2Icache_addr),
-
-        // Outputs
         .mem2Iproc_response (mem2Icache_response),
         .mem2Iproc_data     (mem2Icache_data),
         .mem2Iproc_tag      (mem2Icache_tag),
-
-        // Inputs
         .proc2Dmem_command  (proc2Dcache_command),
         .proc2Dmem_addr     (proc2Dcache_addr),
         .proc2Dmem_data     (proc2Dcache_data),
-
-        // Outputs
         .mem2Dproc_response (mem2Dcache_response),
         .mem2Dproc_data     (mem2Dcache_data),
-        .mem2Dproc_tag      (mem2Dcache_tag),
-        
-        `ifndef CACHE_MODE
-        .proc2Dmem_size     (proc2Dcache_size)
-        `endif
+        .mem2Dproc_tag      (mem2Dcache_tag)
     );
-    
-    // Generate System Clock
+
+    // ------------------------------------------------------------------
+    //  Clock generator
+    // ------------------------------------------------------------------
     always begin
         #(`VERILOG_CLOCK_PERIOD/2.0);
         clock = ~clock;
     end
 
-    // Task to display memory contents
-    task show_mem_with_decimal;
-        input [31:0] start_addr;
-        input [31:0] end_addr;
-        int showing_data;
-        begin
-            $display("@@@");
-            showing_data=0;
-            for(int k=start_addr;k<=end_addr; k=k+1)
-                if (supermem.data_memory[k] != 0) begin
-                    $display("@@@ dmem[%5d] = %x : %0d", k*8, supermem.data_memory[k], 
-                                                        supermem.data_memory[k]);
-                    showing_data=1;
-                end else if(showing_data!=0) begin
-                    $display("@@@");
-                    showing_data=0;
-                end
-            $display("@@@");
-        end
-    endtask  // task show_mem_with_decimal
-    
+    // ------------------------------------------------------------------
+    //  Helper tasks that replace the old supermem references
+    // ------------------------------------------------------------------
+    task automatic load_program;
+        $readmemh("program.mem", U_MEM.instr_mem);
+    endtask
+
+    task automatic clear_dmem;
+        for (int i=0; i<`MEM_64BIT_LINES; i++)
+            U_MEM.data_mem[i] = 64'h0;
+    endtask
+
+    // ------------------------------------------------------------------
+    //  Initialisation sequence
+    // ------------------------------------------------------------------
     initial begin
         $dumpvars;
-    
         clock = 1'b0;
         reset = 1'b0;
         debug_counter = 0;
-        clock_count = 0;
-        
-        // Pulse the reset signal
+        clock_count   = 0;
+
         $display("@@\n@@\n@@  %t  Asserting System reset......", $realtime);
         reset = 1'b1;
         @(posedge clock);
         @(posedge clock);
-        
-        // Load program into instruction memory
-        $readmemh("program.mem", supermem.instr_memory);
-        // Initialize data memory to zeros
-        for (int i = 0; i < `MEM_64BIT_LINES; i++)
-            supermem.data_memory[i] = 64'h0;
-        
+
+        load_program();
+        clear_dmem();
+
         @(posedge clock);
         @(posedge clock);
-        `SD;
-        // This reset is at an odd time to avoid the pos & neg clock edges
-        
         reset = 1'b0;
         $display("@@  %t  Deasserting System reset......\n@@\n@@", $realtime);
     end
 
-    // Cycle counter
+    // ------------------------------------------------------------------
+    //  House-keeping tasks (unchanged)
+    // ------------------------------------------------------------------
     always @(posedge clock) begin
-        if(reset) begin
-            clock_count <= `SD 0;
-        end else begin
-            clock_count <= `SD (clock_count + 1);
-        end
-    end  
-    
-    // Timeout and termination logic
+        if (reset)  clock_count <= '0;
+        else        clock_count <= clock_count + 1;
+    end
+
     always @(negedge clock) begin
-        if(reset) begin
-            $display("@@\n@@  %t : System STILL at reset, can't show anything\n@@",
-                     $realtime);
+        if (reset) begin
+            $display("@@\n@@  %t : System STILL at reset\n@@", $realtime);
             debug_counter <= 0;
         end else begin
-            `SD;
-            `SD;
-            
-            // Terminate simulation after timeout
             if (debug_counter > 50000000) begin
-                $display("@@@ Data Memory contents hex on left, decimal on right: ");
-                show_mem_with_decimal(0, `MEM_64BIT_LINES - 1); 
-                $display("@@  %t : System halted due to timeout", $realtime);
+                $display("@@  %t : System halted (timeout)", $realtime);
                 $display("@@  %0d cycles", clock_count);
-                $display("@@  %4.2f ns total time to execute", 
-                          clock_count*`VERILOG_CLOCK_PERIOD);
+                $display("@@  %4.2f ns total", clock_count*`VERILOG_CLOCK_PERIOD);
                 #100 $finish;
             end
             debug_counter <= debug_counter + 1;
         end
-    end 
+    end
 
-endmodule  // module testbench
+endmodule
 
 //`timescale 1ns/100ps
 

@@ -21,11 +21,15 @@ module passthru_mem #(
     input  logic [`ISSUE_WIDTH-1:0][63:0]  proc2Dmem_data,
     output logic [`ISSUE_WIDTH-1:0][3:0]   mem2Dproc_response,
     output logic [`ISSUE_WIDTH-1:0][63:0]  mem2Dproc_data,
-    output logic [`ISSUE_WIDTH-1:0][3:0]   mem2Dproc_tag
+    output logic [`ISSUE_WIDTH-1:0][3:0]   mem2Dproc_tag,
+    
+    `ifndef CACHE_MODE
+        input MEM_SIZE [`ISSUE_WIDTH-1:0] proc2Dmem_size
+    `endif
 );
 
-    logic [63:0] instr_mem [0:MEM_WORDS-1];
-    logic [63:0] data_mem  [0:MEM_WORDS-1];
+    logic [63:0] instr_memory [0:MEM_WORDS-1];
+    logic [63:0] data_memory  [0:MEM_WORDS-1];
 
     // combinational, zero latency
     always_comb begin
@@ -35,7 +39,7 @@ module passthru_mem #(
                 proc2Imem_addr[w] < `MEM_SIZE_IN_BYTES) begin
                 mem2Iproc_response[w] = w+1;        // tag = lane+1 (never 0)
                 mem2Iproc_tag[w]      = w+1;
-                mem2Iproc_data[w]     = instr_mem[proc2Imem_addr[w][`XLEN-1:3]];
+                mem2Iproc_data[w]     = instr_memory[proc2Imem_addr[w][`XLEN-1:3]];
             end else begin
                 mem2Iproc_response[w] = 0;
                 mem2Iproc_tag[w]      = 0;
@@ -47,7 +51,7 @@ module passthru_mem #(
                 proc2Dmem_addr[w] < `MEM_SIZE_IN_BYTES) begin
                 mem2Dproc_response[w] = w+8;        // keep tags distinct
                 mem2Dproc_tag[w]      = w+8;
-                mem2Dproc_data[w]     = data_mem[proc2Dmem_addr[w][`XLEN-1:3]];
+                mem2Dproc_data[w]     = data_memory[proc2Dmem_addr[w][`XLEN-1:3]];
             end else if (proc2Dmem_command[w]==BUS_STORE && 
                          proc2Dmem_addr[w] < `MEM_SIZE_IN_BYTES) begin
                 mem2Dproc_response[w] = w+8;
@@ -66,7 +70,7 @@ module passthru_mem #(
         for (int w=0; w<`ISSUE_WIDTH; w++) begin
             if (proc2Dmem_command[w]==BUS_STORE && 
                 proc2Dmem_addr[w] < `MEM_SIZE_IN_BYTES) begin
-                data_mem[proc2Dmem_addr[w][`XLEN-1:3]] <= proc2Dmem_data[w];
+                data_memory[proc2Dmem_addr[w][`XLEN-1:3]] <= proc2Dmem_data[w];
             end
         end
     end
@@ -74,8 +78,8 @@ module passthru_mem #(
     // Initialize memories
     initial begin
         for (int i=0; i<MEM_WORDS; i++) begin
-            instr_mem[i] = 64'h0;
-            data_mem[i] = 64'h0;
+            instr_memory[i] = 64'h0;
+            data_memory[i] = 64'h0;
         end
     end
 endmodule

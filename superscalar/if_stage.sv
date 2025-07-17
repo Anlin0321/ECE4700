@@ -21,11 +21,12 @@ module if_stage (
     input  logic                          flush,
     input  XLEN_t                         new_PC,        // redirected PC on branch
     // ---- I-cache interface (superscalar) ----
-    output logic [`ISSUE_WIDTH-1:0] [1:0] proc2Icache_command, 
-    output XLEN_t [`ISSUE_WIDTH-1:0]      proc2Icache_addr,
-    input  logic [`ISSUE_WIDTH-1:0] [3:0] mem2Icache_response,
-    input  logic [`ISSUE_WIDTH-1:0] [63:0] mem2Icache_data,
-    input  logic [`ISSUE_WIDTH-1:0] [3:0] mem2Icache_tag,
+    output logic [`ISSUE_WIDTH-1:0] [1:0]         proc2Icache_command, 
+//    output XLEN_t [`ISSUE_WIDTH-1:0]      proc2Icache_addr,
+    output logic [`ISSUE_WIDTH-1:0] [`XLEN-1:0]    proc2Icache_addr,
+    input  logic [`ISSUE_WIDTH-1:0] [3:0]          mem2Icache_response,
+    input  logic [`ISSUE_WIDTH-1:0] [63:0]         mem2Icache_data,
+    input  logic [`ISSUE_WIDTH-1:0] [3:0]          mem2Icache_tag,
     // ---- IF/ID latch ----
     output IF_ID_PACKET                   if_id_out
 );
@@ -57,7 +58,7 @@ module if_stage (
             assign proc2Icache_addr[w]    = PC_q + w*4;  // word-aligned address
             
             // Process cache response
-            assign if_id_out.inst [w] = mem2Icache_data[w][31:0];  // FIXME: use lower 32 bits?
+            assign if_id_out.inst [w] = proc2Icache_addr[w][2]? mem2Icache_data[w][63: 32] : mem2Icache_data[w][31:0];
             assign if_id_out.PC   [w] = PC_q + w*4;
             assign if_id_out.NPC  [w] = PC_q + (w+1)*4;
             

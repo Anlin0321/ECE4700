@@ -228,69 +228,132 @@ module id_stage (
     // ---- IF/ID input ----
     input  IF_ID_PACKET   if_id_in,
 
+    // ---- NEW ID/EX input ----
+    input  ID_EX_PACKET   id_ex_in,
+
     // ---- scoreboard feedback ----
-    output logic [`ISSUE_WIDTH-1:0]         issue_valid,
-    output logic [`ISSUE_WIDTH-1:0][4:0]    issue_rs1,
-    output logic [`ISSUE_WIDTH-1:0][4:0]    issue_rs2,
+    output logic [`ISSUE_WIDTH-1:0]         issue_valid_rs1,
+    output logic [`ISSUE_WIDTH-1:0]         issue_valid_rs2,
+//    output logic [`ISSUE_WIDTH-1:0][4:0]    issue_rs1,
+//    output logic [`ISSUE_WIDTH-1:0][4:0]    issue_rs2,
+    output logic [`ISSUE_WIDTH-1:0][4:0]    issue_rd,
 
     // ---- regfile interface ----
-    output logic [`ISSUE_WIDTH-1:0][4:0]    rf_rs1_idx,
-    output logic [`ISSUE_WIDTH-1:0][4:0]    rf_rs2_idx,
-    input  XLEN_t [`ISSUE_WIDTH-1:0]        rf_rs1_val,
-    input  XLEN_t [`ISSUE_WIDTH-1:0]        rf_rs2_val,
+    output logic [`ISSUE_WIDTH-1:0][4:0]            rf_rs1_idx,
+    output logic [`ISSUE_WIDTH-1:0][4:0]            rf_rs2_idx,
+//    input  XLEN_t [`ISSUE_WIDTH-1:0]        rf_rs1_val,
+//    input  XLEN_t [`ISSUE_WIDTH-1:0]        rf_rs2_val,
+    input  logic [`ISSUE_WIDTH-1:0][`XLEN-1:0]      rf_rs1_val,
+    input  logic [`ISSUE_WIDTH-1:0][`XLEN-1:0]      rf_rs2_val,
 
     // ---- ID/EX output ----
-    output ID_EX_PACKET   id_ex_out
+    // Seperated into 2 packets to handle intra-lane stall
+//    output ID_EX_PACKET   id_ex_out,
+    output ID_EX_PACKET   id_ex_forward_out,
+    output ID_EX_PACKET   id_ex_stall_out,
 
 //    // New inputs for stall signals
 //    input  logic [`ISSUE_WIDTH-1:0] stall;
+    // New inputs for stall signals
+    input  logic                     stall,
+    // New outputs  for kill signals
+    output logic [`ISSUE_WIDTH-1:0]  kill
 );
+    ID_EX_PACKET   id_ex_out;
 
     //----------------------------------------------------------
     // 1) Per-lane decode
     //----------------------------------------------------------
     genvar w;
     generate for (w = 0; w < `ISSUE_WIDTH; w++) begin : G_DEC
-
-        // ---- Register index extraction (always needed) ----
-        assign rf_rs1_idx[w] = if_id_in.inst[w][19:15];
-        assign rf_rs2_idx[w] = if_id_in.inst[w][24:20];
-        assign id_ex_out.dest_reg_idx[w] = if_id_in.inst[w][11:7];
-
+        DEST_REG_SEL dest_reg_select;
+        
+        // ---- Intermediate wires for decoder outputs ----
+        ALU_OPA_SELECT  opa_select_int;
+        ALU_OPB_SELECT  opb_select_int;
+        ALU_FUNC        alu_func_int;
+        logic        rd_mem_int;
+        logic        wr_mem_int;
+        logic        cond_branch_int;
+        logic        uncond_branch_int;
+        logic        csr_op_int;
+        logic        halt_int;
+        logic        illegal_int;
+        logic        valid_inst_int;
+        
+        // ---- Register index extraction ----
+//        assign rf_rs1_idx[w] = stall ? id_ex_in.rs1_idx[w] : if_id_in.inst[w].r.rs1;
+//        assign rf_rs2_idx[w] = stall ? id_ex_in.rs2_idx[w] : if_id_in.inst[w].r.rs2;
+        assign rf_rs1_idx[w] = if_id_in.inst[w].r.rs1;
+        assign rf_rs2_idx[w] = if_id_in.inst[w].r.rs2;
+    
         // ---- Pass read values straight through ----
         assign id_ex_out.rs1_value[w] = rf_rs1_val[w];
         assign id_ex_out.rs2_value[w] = rf_rs2_val[w];
-
+    
         // ---- Decoder instance ----
         decoder u_dec (
             .inst           (if_id_in.inst[w]),
-            .valid_inst_in  (if_id_in.valid[w]),
-            .opa_select     (id_ex_out.opa_select[w]),
-            .opb_select     (id_ex_out.opb_select[w]),
-            .dest_reg       (/* unused here */),
-            .alu_func       (/* unused here */),
-            .rd_mem         (id_ex_out.rd_mem[w]),
-            .wr_mem         (id_ex_out.wr_mem[w]),
-            .cond_branch    (),
-            .uncond_branch  (),
-            .csr_op         (id_ex_out.csr_op[w]),
-            .halt           (id_ex_out.halt[w]),
-            .illegal        (id_ex_out.illegal[w]),
-            .valid_inst     ()
+            .valid_inst_in  (if_id_in.valid[w] && !stall),
+            // Outputs
+            .opa_select     (opa_select_int),
+            .opb_select     (opb_select_int),
+            .dest_reg       (dest_reg_select),
+            .alu_func       (alu_func_int),
+            .rd_mem         (rd_mem_int),
+            .wr_mem         (wr_mem_int),
+            .cond_branch    (cond_branch_int),
+            .uncond_branch  (uncond_branch_int),
+            .csr_op         (csr_op_int),
+            .halt           (halt_int),
+            .illegal        (illegal_int),
+            .valid_inst     (valid_inst_int)
         );
+    
+        // ---- Output muxes with stall logic ----
+        assign id_ex_out.opa_select[w] = stall ? id_ex_in.opa_select[w] : opa_select_int;
+        assign id_ex_out.opb_select[w] = stall ? id_ex_in.opb_select[w] : opb_select_int;
+        assign id_ex_out.alu_func[w] = stall ? id_ex_in.alu_func[w] : alu_func_int;
+        assign id_ex_out.rd_mem[w] = stall ? id_ex_in.rd_mem[w] : rd_mem_int;
+        assign id_ex_out.wr_mem[w] = stall ? id_ex_in.wr_mem[w] : wr_mem_int;
+        assign id_ex_out.cond_branch[w] = stall ? id_ex_in.cond_branch[w] : cond_branch_int;
+        assign id_ex_out.uncond_branch[w] = stall ? id_ex_in.uncond_branch[w] : uncond_branch_int;
+        assign id_ex_out.csr_op[w] = stall ? id_ex_in.csr_op[w] : csr_op_int;
+        assign id_ex_out.halt[w] = stall ? id_ex_in.halt[w] : halt_int;
+        assign id_ex_out.illegal[w] = stall ? id_ex_in.illegal[w] : illegal_int;
+        assign id_ex_out.valid[w] = stall ? id_ex_in.valid[w] : valid_inst_int;
+    
+        // ---- Destination register selection ----
+        always_comb begin
+            if (stall) begin
+                id_ex_out.dest_reg_idx[w] = id_ex_in.dest_reg_idx[w];
+            end else begin
+                case (dest_reg_select)
+                    DEST_RD:    id_ex_out.dest_reg_idx[w] = if_id_in.inst[w].r.rd;
+                    DEST_NONE:  id_ex_out.dest_reg_idx[w] = `ZERO_REG;
+                    default:    id_ex_out.dest_reg_idx[w] = `ZERO_REG; 
+                endcase
+            end
+        end
+    
+        // ---- Pipeline passthrough with stall logic ----
+        assign id_ex_out.inst[w] = stall ? id_ex_in.inst[w] : if_id_in.inst[w];
+        assign id_ex_out.NPC[w] = stall ? id_ex_in.NPC[w] : if_id_in.NPC[w];
+        assign id_ex_out.PC[w] = stall ? id_ex_in.PC[w] : if_id_in.PC[w];
+    
+//        // ---- Lane-local outputs ----
+//        assign issue_valid_rs1[w] = id_ex_out.valid[w] & (id_ex_out.opa_select[w] == OPA_IS_RS1);
+//        assign issue_valid_rs2[w] = id_ex_out.valid[w] & (id_ex_out.opb_select[w] == OPB_IS_RS2);
+//        assign issue_rs1[w] = rf_rs1_idx[w];
+//        assign issue_rs2[w] = rf_rs2_idx[w];
+//        assign issue_rd[w] = id_ex_out.dest_reg_idx[w];
 
-        // ---- Other simple fields ----
-//        assign id_ex_out.mem_size[w] = 3'd0; // change if you add byte/half ops
-
-        // ---- NPC / PC passthrough ----
-        assign id_ex_out.NPC[w] = if_id_in.NPC[w];
-        assign id_ex_out.PC [w] = if_id_in.PC [w];
-
-        // ---- Lane-local valid (no intra-group squashes yet) ----
-        assign id_ex_out.valid[w] = if_id_in.valid[w];  // FIXME: update after forwarding
-        assign issue_valid[w]     = id_ex_out.valid[w];
-        assign issue_rs1  [w]     = rf_rs1_idx[w];
-        assign issue_rs2  [w]     = rf_rs2_idx[w];
+        // ---- Lane-local outputs ----
+        assign issue_valid_rs1[w] = id_ex_forward_out.valid[w] & (id_ex_forward_out.opa_select[w] == OPA_IS_RS1);
+        assign issue_valid_rs2[w] = id_ex_forward_out.valid[w] & (id_ex_forward_out.opb_select[w] == OPB_IS_RS2);
+//        assign issue_rs1[w] = rf_rs1_idx[w];
+//        assign issue_rs2[w] = rf_rs2_idx[w];
+        assign issue_rd[w] = id_ex_forward_out.dest_reg_idx[w];
     end endgenerate
 
         // Forwarding stalling logic
@@ -306,30 +369,39 @@ module id_stage (
     //----------------------------------------------------------
     // 2) Simple intra-group RAW/WAW kill (optional)
     //----------------------------------------------------------
-    logic [`ISSUE_WIDTH-1:0] kill;
     integer i, j;
     always_comb begin
         kill = '0;
         for (i = 1; i < `ISSUE_WIDTH; i++) begin
             for (j = 0; j < i; j++) begin
-                if ( id_ex_out.valid[i] &&
-                     ( (rf_rs1_idx[i] == id_ex_out.dest_reg_idx[j] && id_ex_out.dest_reg_idx[j] != 0) ||
-                       (rf_rs2_idx[i] == id_ex_out.dest_reg_idx[j] && id_ex_out.dest_reg_idx[j] != 0) ||
-                       (id_ex_out.dest_reg_idx[i] == id_ex_out.dest_reg_idx[j] && id_ex_out.dest_reg_idx[i] != 0) ) )
-                    kill[i] = 1'b1;
+                if (id_ex_out.valid[i]) begin
+                    logic rs1_conflict = (rf_rs1_idx[i] == id_ex_out.dest_reg_idx[j] && id_ex_out.dest_reg_idx[j] != 0);
+                    logic rs2_conflict = (rf_rs2_idx[i] == id_ex_out.dest_reg_idx[j] && id_ex_out.dest_reg_idx[j] != 0);
+                    // logic rd_conflict = (id_ex_out.dest_reg_idx[i] == id_ex_out.dest_reg_idx[j] && id_ex_out.dest_reg_idx[i] != 0);
+                    if (rs1_conflict || rs2_conflict)
+                        kill[i] = 1'b1;
+                 end
             end
         end
     end
 
-    // apply kill mask
-    generate for (w = 0; w < `ISSUE_WIDTH; w++) begin : G_KILL
-        always_comb begin
-            if (kill[w]) begin
-                id_ex_out.valid[w]   = 1'b0;
-                issue_valid   [w]    = 1'b0;
-            end
-        end
-    end endgenerate
+    // intra-lane hazards stall logic
+	always_comb begin
+	   logic kill_start = 1'b0;
+	   id_ex_stall_out = id_ex_out;
+	   id_ex_forward_out = id_ex_out;
+	   for (int i = 0; i < `ISSUE_WIDTH; i++) begin
+	       if (kill[i])
+                kill_start = 1'b1;
+
+            // id_ex_stall_packet keeps track of the stalled instructions
+            id_ex_stall_out.valid[i] = kill_start & id_ex_stall_out.valid[i];
+
+            // id_ex_packer keeps track of the forwarded instructions
+            id_ex_forward_out.valid[i] = ~kill_start & id_ex_forward_out.valid[i];
+	   end
+	end
+
 endmodule
 
 //module id_stage(         

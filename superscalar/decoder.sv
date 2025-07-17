@@ -63,7 +63,7 @@ module decoder (
         illegal      = `FALSE;
 
         if (valid_inst_in) begin
-            // ---- real decode ----
+            // ---- decode ----
             casez (inst)
                 `RV32_LUI: begin
                     dest_reg   = DEST_RD;

@@ -22,9 +22,10 @@ module wb_stage
     input  MEM_WB_PACKET  mem_wb_in,
 
     // ---- regfile write-back ----
-    output logic  [`ISSUE_WIDTH-1:0]        rf_wr_en,
-    output logic  [`ISSUE_WIDTH-1:0][4:0]   rf_wr_idx,
-    output XLEN_t [`ISSUE_WIDTH-1:0]        rf_wr_data,
+    output logic  [`ISSUE_WIDTH-1:0]               rf_wr_en,
+    output logic  [`ISSUE_WIDTH-1:0][4:0]          rf_wr_idx,
+//    output XLEN_t [`ISSUE_WIDTH-1:0]        rf_wr_data,
+    output logic  [`ISSUE_WIDTH-1:0][`XLEN-1:0]    rf_wr_data,
 
     // ---- global halt/illegal ----
     output logic          halt_out,
@@ -34,30 +35,30 @@ module wb_stage
     genvar w;
     generate
         for (w = 0; w < `ISSUE_WIDTH; w++) begin : G_WB
-            assign rf_wr_en  [w] = mem_wb_in.valid[w] & ~mem_wb_in.illegal[w];
+            wire   [`XLEN-1:0] result_mux;
+            assign result_mux = (mem_wb_in.take_branch[w]) ? mem_wb_in.NPC[w] : mem_wb_in.wb_data[w];
+            assign rf_wr_en  [w] = mem_wb_in.valid[w] & ~mem_wb_in.illegal[w] & mem_wb_in.dest_reg_idx[w] != `ZERO_REG;
             assign rf_wr_idx [w] = mem_wb_in.dest_reg_idx[w];
-            assign rf_wr_data[w] = mem_wb_in.wb_data[w];
+            assign rf_wr_data[w] = result_mux;
         end
     endgenerate
 
-//    assign halt_out    = &mem_wb_in.halt;       // halt when *all* lanes halt
-//    assign illegal_out = |mem_wb_in.illegal;    // any lane illegal
     // ----------------------------------------------------------
     //  Global halt / illegal reduction for unpacked arrays
     // ----------------------------------------------------------
-    logic all_halt;
+    logic any_halt;
     logic any_illegal;
 
     always_comb begin
-        all_halt    = 1'b1;
+        any_halt    = 1'b1;
         any_illegal = 1'b0;
         for (int i = 0; i < `ISSUE_WIDTH; i++) begin
-            all_halt    &= mem_wb_in.halt   [i];
+            any_halt    &= mem_wb_in.halt   [i];
             any_illegal |= mem_wb_in.illegal[i];
         end
     end
 
-    assign halt_out    = all_halt;      // halt when every lane requests halt
+    assign halt_out    = any_halt;      // halt when any lane requests halt
     assign illegal_out = any_illegal;   // illegal if any lane flags it
 endmodule
 

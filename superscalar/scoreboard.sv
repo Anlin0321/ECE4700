@@ -31,37 +31,46 @@ module scoreboard
     input  logic [`ISSUE_WIDTH-1:0][4:0]  commit_rd,
 
     // ---- issue (decode) ----
-    input  logic [`ISSUE_WIDTH-1:0]       issue_valid,
+    input  logic [`ISSUE_WIDTH-1:0]       issue_valid_rs1,
+    input  logic [`ISSUE_WIDTH-1:0]       issue_valid_rs2,
     input  logic [`ISSUE_WIDTH-1:0][4:0]  issue_rs1,
     input  logic [`ISSUE_WIDTH-1:0][4:0]  issue_rs2,
+    // no issue_valid for rd since rd can be set to `ZERO_REG
+    input  logic [`ISSUE_WIDTH-1:0][4:0]  issue_rd,
 
     output logic                     stall
 );
 
     // track busy registers x1-x31 (x0 never busy)
-    logic [31:1] busy_bits;
+    logic [31:1][$clog2(`ISSUE_WIDTH*5)-1:0] busy_counters;
 
-    integer i;
     always_ff @(posedge clk or posedge rst) begin
-        if (rst) busy_bits <= '0;
+        if (rst) busy_counters <= '0;
         else begin
             // clear on commit
-            for (i = 0; i < `ISSUE_WIDTH; i++)
+            for (int i = 0; i < `ISSUE_WIDTH; i++)
                 if (commit_valid[i] && commit_rd[i]!=5'd0)
-                    busy_bits[commit_rd[i]] <= 1'b0;
-
-            // set on issue (dest not provided here, so conservative)
-            // could be expanded if dest indices available at ID
+                    busy_counters[commit_rd[i]] <= busy_counters[commit_rd[i]] - 1'b1;
+            // set on issue
+            for (int j = 0; j < `ISSUE_WIDTH; j++)
+                if (issue_rd[j] != `ZERO_REG)
+                    busy_counters[issue_rd[j]] <= busy_counters[issue_rd[j]] + 1'b1;
         end
     end
+
+//    always_comb begin
+//        for (int j = 0; j < `ISSUE_WIDTH; j++)
+//            if (issue_rd[j] != `ZERO_REG)
+//                busy_bits[issue_rd[j]] = 1'b1;
+//    end
 
     // RAW hazard check
     logic hazard;
     always_comb begin
         hazard = 1'b0;
-        for (i = 0; i < `ISSUE_WIDTH; i++) if (issue_valid[i]) begin
-            if (issue_rs1[i]!=5'd0 && busy_bits[issue_rs1[i]]) hazard = 1'b1;
-            if (issue_rs2[i]!=5'd0 && busy_bits[issue_rs2[i]]) hazard = 1'b1;
+        for (int j = 0; j < `ISSUE_WIDTH; j++) begin
+            if (issue_valid_rs1[j] && issue_rs1[j]!=5'd0 && busy_counters[issue_rs1[j]]) hazard = 1'b1;
+            if (issue_valid_rs2[j] && issue_rs2[j]!=5'd0 && busy_counters[issue_rs2[j]]) hazard = 1'b1;
         end
     end
     assign stall = hazard;

@@ -34,16 +34,35 @@ module pipeline (
 `endif
     input  logic [`ISSUE_WIDTH-1:0] [3:0]   mem2Dcache_response,
     input  logic [`ISSUE_WIDTH-1:0] [63:0]  mem2Dcache_data,
-    input  logic [`ISSUE_WIDTH-1:0] [3:0]   mem2Dcache_tag
+    input  logic [`ISSUE_WIDTH-1:0] [3:0]   mem2Dcache_tag,
+    
+    // ---- Monitor Signals ----
+    output logic [3:0]  pipeline_completed_insts,
+    output EXCEPTION_CODE   pipeline_error_status
 );
 
     // ---------------------------------------------------------
     // Stage registers (now ISSUE_WIDTH arrays)
     // ---------------------------------------------------------
     IF_ID_PACKET   if_packet, if_id_packet;
-    ID_EX_PACKET   id_packet, id_ex_packet;
+//    ID_EX_PACKET   id_packet, id_ex_packet, id_ex_forward_packet, id_ex_stall_packet;
+    ID_EX_PACKET   id_stall_packet, id_forward_packet, id_ex_forward_packet, id_ex_stall_packet;
     EX_MEM_PACKET  ex_packet, ex_mem_packet;
     MEM_WB_PACKET  mem_packet, mem_wb_packet;
+    
+    // stall register (for id stage)
+    logic last_stalled;
+    
+    // ---- regfile shared between ID & WB ----
+    logic [`ISSUE_WIDTH-1:0] [4:0] rs1_idx;
+    logic [`ISSUE_WIDTH-1:0] [4:0] rs2_idx;
+    logic [`ISSUE_WIDTH-1:0] [4:0] rd_idx;  // id stage rd
+    XLEN_t [`ISSUE_WIDTH-1:0]      rs1_val;
+    XLEN_t [`ISSUE_WIDTH-1:0]      rs2_val;
+
+    logic [`ISSUE_WIDTH-1:0]        rf_wr_en;
+    logic [`ISSUE_WIDTH-1:0] [4:0]  rf_wr_idx;
+    XLEN_t [`ISSUE_WIDTH-1:0]       rf_wr_data;
 
     // ---------------------------------------------------------
     // Control wires
@@ -55,6 +74,20 @@ module pipeline (
     logic if_id_enable;
     logic id_ex_enable;
     logic ex_mem_enable;
+
+    logic [`ISSUE_WIDTH-1:0]  id_kills;
+    
+    // ---------------------------------------------------------
+    // Internal Monitors
+    // ---------------------------------------------------------
+    logic mem_wb_illegal;
+    logic mem_wb_halt;
+    assign mem_wb_illegal = any_valid_unpacked(mem_wb_packet.illegal);
+    assign mem_wb_halt = any_valid_unpacked(mem_wb_packet.halt);
+    assign pipeline_error_status =  mem_wb_illegal             ? ILLEGAL_INST :
+	                                mem_wb_halt                ? HALTED_ON_WFI :
+	                                // (mem2proc_response==4'h0)  ? LOAD_ACCESS_FAULT :
+	                                NO_ERROR;
 
 ////////////////////////////////////////////////////
 ////                                              //
@@ -143,7 +176,16 @@ module pipeline (
 
             // ID/EX Stage
             $display("--- ID Stage Output ---");
-            print_id_ex_packet(id_packet);
+            print_id_ex_packet(id_forward_packet);
+
+            if (stall) begin
+                $display("--- ID Stage Stalled Output ---");
+                print_id_ex_packet(id_stall_packet);
+                $display("--- ID/EX Reg Output ---");
+                print_id_ex_packet(id_ex_forward_packet);
+                $display("--- ID/ID Reg Stalled Output ---");
+                print_id_ex_packet(id_ex_stall_packet);
+            end
 
             // EX/MEM Stage
             $display("--- EX Stage Output ---");
@@ -184,16 +226,6 @@ module pipeline (
         .if_id_out           (if_packet)
     );
 
-    // ---- regfile shared between ID & WB ----
-    logic [`ISSUE_WIDTH-1:0] [4:0] rs1_idx;
-    logic [`ISSUE_WIDTH-1:0] [4:0] rs2_idx;
-    XLEN_t [`ISSUE_WIDTH-1:0]      rs1_val;
-    XLEN_t [`ISSUE_WIDTH-1:0]      rs2_val;
-
-    logic [`ISSUE_WIDTH-1:0]        rf_wr_en;
-    logic [`ISSUE_WIDTH-1:0] [4:0]  rf_wr_idx;
-    XLEN_t [`ISSUE_WIDTH-1:0]       rf_wr_data;
-
     regfile U_RF (
         .rda_idx   (rs1_idx),
         .rdb_idx   (rs2_idx),
@@ -207,15 +239,18 @@ module pipeline (
 
     // ---- scoreboard ----
     logic sb_stall;
-    logic [`ISSUE_WIDTH-1:0] issue_valid;
+    logic [`ISSUE_WIDTH-1:0] issue_valid_rs1;
+    logic [`ISSUE_WIDTH-1:0] issue_valid_rs2;
     scoreboard U_SB (
         .clk          (clk),
         .rst          (rst),
         .commit_valid (rf_wr_en),
         .commit_rd    (rf_wr_idx),
-        .issue_valid  (issue_valid),
+        .issue_valid_rs1  (issue_valid_rs1),
+        .issue_valid_rs2  (issue_valid_rs2),
         .issue_rs1    (rs1_idx),
         .issue_rs2    (rs2_idx),
+        .issue_rd     (rd_idx),
         .stall        (sb_stall)
     );
 
@@ -225,7 +260,8 @@ module pipeline (
 ////                                              //
 ////////////////////////////////////////////////////
 
-	assign if_id_enable = 1'b1; // always enabled
+//	assign if_id_enable = 1'b1; // always enabled
+    assign if_id_enable = ~stall; // if stalled, we want if_id registers freeze
 	// synopsys sync_set_reset "reset"
 	always_ff @(posedge clk) begin
 		if (rst) begin 
@@ -247,17 +283,26 @@ module pipeline (
 ////                  ID-Stage                    //
 ////                                              //
 ////////////////////////////////////////////////////
-
+    logic in_lane_stall; // stall for intra-lane hazards
     id_stage U_ID (
         .clk         (clk),
         .rst         (rst),
         .if_id_in    (if_id_packet),
-        .issue_valid (issue_valid),
+        .id_ex_in    (id_ex_stall_packet),
+
+        .issue_valid_rs1 (issue_valid_rs1),
+        .issue_valid_rs2 (issue_valid_rs2),
+        .issue_rd        (rd_idx),
         .rf_rs1_idx  (rs1_idx),
         .rf_rs2_idx  (rs2_idx),
         .rf_rs1_val  (rs1_val),
         .rf_rs2_val  (rs2_val),
-        .id_ex_out   (id_packet)
+
+//        .id_ex_out   (id_packet),
+        .id_ex_forward_out  (id_forward_packet),
+        .id_ex_stall_out    (id_stall_packet),
+        .stall       (last_stalled),
+        .kill        (id_kills)
     );
     
 ////////////////////////////////////////////////////
@@ -271,31 +316,83 @@ module pipeline (
 //	assign id_ex_valid_inst = id_ex_packet.valid;
 
 	assign id_ex_enable = 1'b1; // always enabled
+	assign in_lane_stall = any_valid_packed(id_kills);
+
+    always_ff @(posedge clk) begin
+        if (rst)
+            last_stalled = 1'b0;
+        else
+            last_stalled = stall;
+    end
+
 	// synopsys sync_set_reset "reset"
 	always_ff @(posedge clk) begin
 		if (rst) begin
 		    for (int i = 0; i < `ISSUE_WIDTH; i++) begin
-                id_ex_packet.NPC[i]           <= {`XLEN{1'b0}};
-                id_ex_packet.PC[i]            <= {`XLEN{1'b0}};
-                id_ex_packet.rs1_value[i]     <= {`XLEN{1'b0}};
-                id_ex_packet.rs2_value[i]     <= {`XLEN{1'b0}};
-                id_ex_packet.opa_select[i]    <= OPA_IS_RS1;  // Default to using RS1
-                id_ex_packet.opb_select[i]    <= OPB_IS_RS2;  // Default to using RS2
-                id_ex_packet.inst[i]         <= `NOP;        // Insert NOP instructions
-                id_ex_packet.dest_reg_idx[i]  <= `ZERO_REG;   // Default to zero register
-                id_ex_packet.alu_func[i]      <= ALU_ADD;     // Default to ADD operation
-                id_ex_packet.rd_mem[i]       <= 1'b0;        // No memory read
-                id_ex_packet.wr_mem[i]       <= 1'b0;        // No memory write
-                id_ex_packet.cond_branch[i]  <= 1'b0;        // No conditional branch
-                id_ex_packet.uncond_branch[i] <= 1'b0;        // No unconditional branch
-                id_ex_packet.halt[i]         <= 1'b0;        // Not halted
-                id_ex_packet.illegal[i]      <= 1'b0;        // Legal instruction
-                id_ex_packet.csr_op[i]       <= 1'b0;        // No CSR operation
-                id_ex_packet.valid[i]        <= 1'b0;        // Invalid instruction
+//                id_ex_packet.NPC[i]           <= {`XLEN{1'b0}};
+//                id_ex_packet.PC[i]            <= {`XLEN{1'b0}};
+//                id_ex_packet.rs1_value[i]     <= {`XLEN{1'b0}};
+//                id_ex_packet.rs2_value[i]     <= {`XLEN{1'b0}};
+//                id_ex_packet.opa_select[i]    <= OPA_IS_RS1;  // Default to using RS1
+//                id_ex_packet.opb_select[i]    <= OPB_IS_RS2;  // Default to using RS2
+//                id_ex_packet.inst[i]         <= `NOP;        // Insert NOP instructions
+//                id_ex_packet.dest_reg_idx[i]  <= `ZERO_REG;   // Default to zero register
+//                id_ex_packet.alu_func[i]      <= ALU_ADD;     // Default to ADD operation
+//                id_ex_packet.rd_mem[i]       <= 1'b0;        // No memory read
+//                id_ex_packet.wr_mem[i]       <= 1'b0;        // No memory write
+//                id_ex_packet.cond_branch[i]  <= 1'b0;        // No conditional branch
+//                id_ex_packet.uncond_branch[i] <= 1'b0;        // No unconditional branch
+//                id_ex_packet.halt[i]         <= 1'b0;        // Not halted
+//                id_ex_packet.illegal[i]      <= 1'b0;        // Legal instruction
+//                id_ex_packet.csr_op[i]       <= 1'b0;        // No CSR operation
+//                id_ex_packet.valid[i]        <= 1'b0;        // Invalid instruction
+
+                id_ex_forward_packet.NPC[i]           <= {`XLEN{1'b0}};
+                id_ex_forward_packet.PC[i]            <= {`XLEN{1'b0}};
+                id_ex_forward_packet.rs1_value[i]     <= {`XLEN{1'b0}};
+                id_ex_forward_packet.rs2_value[i]     <= {`XLEN{1'b0}};
+                id_ex_forward_packet.opa_select[i]    <= OPA_IS_RS1;  // Default to using RS1
+                id_ex_forward_packet.opb_select[i]    <= OPB_IS_RS2;  // Default to using RS2
+                id_ex_forward_packet.inst[i]         <= `NOP;        // Insert NOP instructions
+                id_ex_forward_packet.dest_reg_idx[i]  <= `ZERO_REG;   // Default to zero register
+                id_ex_forward_packet.alu_func[i]      <= ALU_ADD;     // Default to ADD operation
+                id_ex_forward_packet.rd_mem[i]       <= 1'b0;        // No memory read
+                id_ex_forward_packet.wr_mem[i]       <= 1'b0;        // No memory write
+                id_ex_forward_packet.cond_branch[i]  <= 1'b0;        // No conditional branch
+                id_ex_forward_packet.uncond_branch[i] <= 1'b0;        // No unconditional branch
+                id_ex_forward_packet.halt[i]         <= 1'b0;        // Not halted
+                id_ex_forward_packet.illegal[i]      <= 1'b0;        // Legal instruction
+                id_ex_forward_packet.csr_op[i]       <= 1'b0;        // No CSR operation
+                id_ex_forward_packet.valid[i]        <= 1'b0;        // Invalid instruction
+                
+                id_ex_stall_packet.NPC[i]           <= {`XLEN{1'b0}};
+                id_ex_stall_packet.PC[i]            <= {`XLEN{1'b0}};
+                id_ex_stall_packet.rs1_value[i]     <= {`XLEN{1'b0}};
+                id_ex_stall_packet.rs2_value[i]     <= {`XLEN{1'b0}};
+                id_ex_stall_packet.opa_select[i]    <= OPA_IS_RS1;  // Default to using RS1
+                id_ex_stall_packet.opb_select[i]    <= OPB_IS_RS2;  // Default to using RS2
+                id_ex_stall_packet.inst[i]         <= `NOP;        // Insert NOP instructions
+                id_ex_stall_packet.dest_reg_idx[i]  <= `ZERO_REG;   // Default to zero register
+                id_ex_stall_packet.alu_func[i]      <= ALU_ADD;     // Default to ADD operation
+                id_ex_stall_packet.rd_mem[i]       <= 1'b0;        // No memory read
+                id_ex_stall_packet.wr_mem[i]       <= 1'b0;        // No memory write
+                id_ex_stall_packet.cond_branch[i]  <= 1'b0;        // No conditional branch
+                id_ex_stall_packet.uncond_branch[i] <= 1'b0;        // No unconditional branch
+                id_ex_stall_packet.halt[i]         <= 1'b0;        // Not halted
+                id_ex_stall_packet.illegal[i]      <= 1'b0;        // Legal instruction
+                id_ex_stall_packet.csr_op[i]       <= 1'b0;        // No CSR operation
+                id_ex_stall_packet.valid[i]        <= 1'b0;        // Invalid instruction
 			end
+        end else if (sb_stall) begin
+            id_ex_stall_packet <= `SD id_stall_packet;
+            for (int i=0; i < `ISSUE_WIDTH; i++) begin
+                id_ex_forward_packet.valid[i] <= `SD 1'b0;
+                id_ex_stall_packet.valid[i]   <= `SD 1'b1;
+            end
 		end else begin // if (reset)
 			if (id_ex_enable) begin
-				id_ex_packet <= `SD id_packet;
+				id_ex_forward_packet <= `SD id_forward_packet;
+				id_ex_stall_packet <= `SD id_stall_packet;
 			end // if
 		end // else: !if(reset)
 	end // always
@@ -309,7 +406,8 @@ module pipeline (
     ex_stage U_EX (
         .clk            (clk),
         .rst            (rst),
-        .id_ex_in       (id_ex_packet),
+//        .id_ex_in       (id_ex_packet),
+        .id_ex_in       (id_ex_forward_packet),
         .ex_mem_out     (ex_packet),
         .branch_taken   (branch_take),
         .branch_target  (branch_target)
@@ -385,6 +483,8 @@ module pipeline (
             if (rst) begin
     //			ex_mem_IR     <= `SD `NOP;
                 for (int i = 0; i < `ISSUE_WIDTH; i++) begin
+                    mem_wb_packet.NPC[i]          <= 0;
+                    mem_wb_packet.take_branch[i]  <= 1'b0;
                     mem_wb_packet.wb_data[i]      <= 0;            // Zero writeback data
                     mem_wb_packet.dest_reg_idx[i] <= `ZERO_REG;    // Target zero register
                     mem_wb_packet.halt[i]        <= 1'b0;         // Not halted
@@ -428,7 +528,7 @@ module pipeline (
     // Global stall / flush
     // ---------------------------------------------------------
     assign flush = branch_take;
-    assign stall = sb_stall;   // + other sources (e.g., cache miss)
+    assign stall = sb_stall | in_lane_stall;   // + other sources (e.g., cache miss)
 //    assign stall = sb_stall | any_valid(stall_signal);
 
 endmodule

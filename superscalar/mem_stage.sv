@@ -24,9 +24,10 @@ module mem_stage (
     // ---- EX/MEM input (superscalar) ----
     input  EX_MEM_PACKET                    ex_mem_in,
     // ---- D-cache interface (superscalar) ----
-    output logic [`ISSUE_WIDTH-1:0] [1:0]   proc2Dcache_command,
-    output XLEN_t [`ISSUE_WIDTH-1:0]        proc2Dcache_addr,
-    output logic [`ISSUE_WIDTH-1:0] [63:0]  proc2Dcache_data,
+    output logic [`ISSUE_WIDTH-1:0] [1:0]          proc2Dcache_command,
+//    output XLEN_t [`ISSUE_WIDTH-1:0]        proc2Dcache_addr,
+    output logic [`ISSUE_WIDTH-1:0] [`XLEN-1:0]    proc2Dcache_addr,
+    output logic [`ISSUE_WIDTH-1:0] [63:0]         proc2Dcache_data,
 `ifndef CACHE_MODE
     output MEM_SIZE [`ISSUE_WIDTH-1:0]      proc2Dcache_size,
 `endif
@@ -102,6 +103,8 @@ module mem_stage (
                 ex_mem_in.alu_result[w];
 
             // Pass-through control signals
+            assign mem_wb_out.NPC[w]          = ex_mem_in.NPC[w];
+            assign mem_wb_out.take_branch[w]  = ex_mem_in.take_branch[w];
             assign mem_wb_out.dest_reg_idx[w] = ex_mem_in.dest_reg_idx[w];
             assign mem_wb_out.halt[w]         = ex_mem_in.halt[w];
             assign mem_wb_out.illegal[w]      = ex_mem_in.illegal[w];

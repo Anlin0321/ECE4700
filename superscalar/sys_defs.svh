@@ -367,6 +367,8 @@ typedef struct {
 
 // ----- NEW! MEM/WB -----
 typedef struct {
+    XLEN_t              NPC          [`IW_RANGE];
+    logic               take_branch  [`IW_RANGE];
     XLEN_t              wb_data      [`IW_RANGE];
     logic [4:0]         dest_reg_idx [`IW_RANGE];
     logic               halt         [`IW_RANGE];
@@ -381,13 +383,22 @@ typedef struct {
 //function automatic logic any_valid (input logic valid_vec [`IW_RANGE]);
 //    any_valid = |valid_vec;
 //endfunction
-function automatic logic any_valid (input logic vec [`IW_RANGE]);
+function automatic logic any_valid_packed (input logic [`IW_RANGE] vec);
     automatic logic r;
     r = 1'b0;
     for (int i = 0; i < `ISSUE_WIDTH; i++) begin
         r |= vec[i];
     end
-    any_valid = r;
+    any_valid_packed = r;
+endfunction
+
+function automatic logic any_valid_unpacked (input logic vec [`IW_RANGE]);
+    automatic logic r;
+    r = 1'b0;
+    for (int i = 0; i < `ISSUE_WIDTH; i++) begin
+        r |= vec[i];
+    end
+    any_valid_unpacked = r;
 endfunction
 
 `endif // __SYS_DEFS_VH__

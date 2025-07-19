@@ -1,0 +1,2 @@
+input: output/long.s
+output: output/long.hex

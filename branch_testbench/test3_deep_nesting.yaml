@@ -1,0 +1,10 @@
+seed: 103
+output: "deep_nesting.s"
+codelen: 1000
+hazard: 0.4
+weights: [0.1, 0.1, 0.3, 0.2, 0.3]
+regnum: 12
+membase: "0x4000"
+max_loop_depth: 6
+loop_exit_prob: 0.1
+loop_insert_prob: 0.3

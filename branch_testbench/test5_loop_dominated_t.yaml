@@ -1,0 +1,2 @@
+input: output/loop_dominated.s
+output: output/loop_dominated.hex

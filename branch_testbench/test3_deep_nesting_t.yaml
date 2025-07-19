@@ -1,0 +1,2 @@
+input: output/deep_nesting.s
+output: output/deep_nesting.hex

@@ -1,212 +1,342 @@
 module branch_predictor (
     input wire clk,
     input wire reset,
-    input wire [31:0] pc,          // 当前指令PC
-    input wire branch_taken,       // 实际分支结果（来自EX阶段）
-    input wire is_branch,          // 当前指令是否是分支
-    output wire prediction,        // 预测方向（1=TAKEN, 0=NOT TAKEN）
-    output wire [31:0] pred_target // 预测目标地址（可选）
+    input wire [31:0] pc,
+    input wire [31:0] instruction,
+    input wire branch_taken_actual,
+    input wire is_branch_actual,
+    output wire prediction,
+    output wire is_branch_predicted
 );
 
-    // ---------- 子模块信号声明 ----------
-    wire loop_prediction;
+    // Instruction type decoding
+    wire [6:0] opcode = instruction[6:0];
+    wire is_branch_inst = (opcode == 7'b1100011); 
+    wire is_jal_inst = (opcode == 7'b1101111);
+    wire is_jalr_inst = (opcode == 7'b1100111);
+    
+    assign is_branch_predicted = is_branch_inst | is_jal_inst | is_jalr_inst;
+    
+    // Unconditional branches always taken
+    wire unconditional_taken = is_jal_inst | is_jalr_inst;
+    
+    // TAGE prediction with loop predictor
     wire tage_prediction;
+    wire loop_prediction;
     wire use_loop_pred;
-
-    // ---------- 实例化子模块 ----------
-    loop_predictor loop_predictor_inst (
+    
+    tage_predictor #(
+        .NUM_TABLES(7),
+        .TAG_WIDTH(14),
+        .CTR_WIDTH(3),
+        .TABLE_SIZE(2048),
+        .GHIST_WIDTH(256),
+        .USEFUL_WIDTH(2),
+        .ALLOC_THRESH(2)
+    ) tage_predictor_inst (
         .clk(clk),
         .reset(reset),
         .pc(pc),
-        .branch_taken(branch_taken),
-        .is_branch(is_branch),
-        .prediction(loop_prediction)
+        .branch_taken(branch_taken_actual),
+        .is_branch(is_branch_actual),
+        .prediction(tage_prediction),
+        .loop_prediction(loop_prediction),
+        .use_loop_pred(use_loop_pred)
     );
+    
+    // Final prediction with loop priority
+    wire raw_prediction;
 
-    tage_predictor tage_predictor_inst (
-        .clk(clk),
-        .reset(reset),
-        .pc(pc),
-        .branch_taken(branch_taken),
-        .is_branch(is_branch),
-        .prediction(tage_prediction)
-    );
-
-    // ---------- 预测选择逻辑 ----------
-    // 优先使用Loop Predictor（如果检测到循环）
-    assign use_loop_pred = (loop_predictor_inst.loop_detected);
-    assign prediction = use_loop_pred ? loop_prediction : tage_prediction;
-
-    // ---------- 目标地址预测（可选） ----------
-    // 此处可添加BTB（Branch Target Buffer）模块
-    wire btb_hit;
-    wire [31:0] btb_target;
-
-    // ---------- 实例化BTB ----------
-    btb btb_inst (
-        .clk(clk),
-        .reset(reset),
-        .pc(pc),
-        .actual_target(actual_target_from_ex), // 来自EX阶段
-        .is_branch(is_branch),
-        .branch_taken(branch_taken),
-        .pred_target(btb_target),
-        .btb_hit(btb_hit)
-    );
-
-    // ---------- 预测目标逻辑 ----------
-    assign pred_target = (prediction && btb_hit) ? btb_target : pc + 4;
-
+    assign raw_prediction = unconditional_taken ? 1'b1 :
+                             (use_loop_pred ? loop_prediction : tage_prediction);
+    
+    assign prediction = !raw_prediction;
 endmodule
 
-
-module tage_predictor (
+module tage_predictor #(
+    parameter NUM_TABLES = 7,         // Including bimodal table
+    parameter TAG_WIDTH = 14,          // Tag width for TAGE tables
+    parameter CTR_WIDTH = 3,           // Counter width
+    parameter TABLE_SIZE = 2048,       // Entries per table
+    parameter GHIST_WIDTH = 256,       // Global history width
+    parameter USEFUL_WIDTH = 2,        // Useful counter width
+    parameter ALLOC_THRESH = 2         // Allocation threshold
+)(
     input wire clk,
     input wire reset,
     input wire [31:0] pc,
     input wire branch_taken,
     input wire is_branch,
-    output wire prediction
+    output reg prediction,
+    output reg loop_prediction,
+    output reg use_loop_pred
 );
 
-    // ---------- 参数配置 ----------
-    parameter NUM_TABLES = 4;      // 4个历史长度表（简化版）
-    parameter HISTORY_LEN [0:3] = '{1, 2, 4, 8}; // 几何级数历史长度
-
-    // ---------- 全局历史寄存器 ----------
-    reg [63:0] global_history;
+    // Derived parameters
+    localparam INDEX_WIDTH = $clog2(TABLE_SIZE);
+    localparam int HISTORY_LEN [7] = '{0, 4, 10, 20, 40, 80, 160}; // History lengths
+    
+    // Global history registers
+    reg [GHIST_WIDTH-1:0] global_history;
+    
+    // Loop detection registers
+    reg [31:0] last_branch_pc [0:3];  // Last 4 branch PCs
+    reg [15:0] loop_counter [0:3];     // Loop counters
+    reg [1:0]  loop_state [0:3];       // Loop states: 00=inactive, 01=detecting, 10=active
+    reg [1:0]  loop_ptr;               // Current loop buffer pointer
+    
+    // Loop detection logic
+    wire loop_detected = (loop_state[0] == 2'b10) || 
+                         (loop_state[1] == 2'b10) || 
+                         (loop_state[2] == 2'b10) || 
+                         (loop_state[3] == 2'b10);
+    
+    // History update logic
     always @(posedge clk) begin
-        if (reset) 
-            global_history <= 0;
-        else if (is_branch)
-            global_history <= {global_history[62:0], branch_taken};
-    end
-
-    // ---------- TAGE表定义 ----------
-    reg [1:0] tage_tables [0:NUM_TABLES-1][0:1023]; // 10-bit索引，2-bit饱和计数器
-
-    // ---------- 预测逻辑 ----------
-    wire [NUM_TABLES-1:0] tag_matches;
-    wire [1:0] table_predictions [0:NUM_TABLES-1];
-    wire [3:0] selected_table;     // 选择最匹配的表
-
-    // 并行查询所有表
-    generate
-        for (genvar i = 0; i < NUM_TABLES; i++) begin
-            // 计算索引和Tag（简化：PC XOR 历史片段）
-            wire [9:0] index = pc[9:0] ^ global_history[HISTORY_LEN[i]-1:0];
-            wire [15:0] tag = pc[25:10] ^ global_history[63:48];
+        if (reset) begin
+            global_history <= '0;
+            for (int i = 0; i < 4; i++) begin
+                last_branch_pc[i] <= '0;
+                loop_counter[i] <= '0;
+                loop_state[i] <= 2'b00;
+            end
+            loop_ptr <= 0;
+        end
+        else if (is_branch) begin
+            // Update global history
+            global_history <= {global_history[GHIST_WIDTH-2:0], branch_taken};
             
-            // 检查Tag匹配
-            assign tag_matches[i] = (tage_tables[i][index][1:0] == tag[1:0]);
-            assign table_predictions[i] = tage_tables[i][index][2:1]; // 2-bit预测
-            
-            // 更新逻辑（在EX阶段确认分支结果后）
-            always @(posedge clk) begin
-                if (is_branch && tag_matches[i]) begin
-                    // 更新饱和计数器
-                    if (branch_taken && (tage_tables[i][index][2:1] < 2'b11))
-                        tage_tables[i][index][2:1] <= tage_tables[i][index][2:1] + 1;
-                    else if (!branch_taken && (tage_tables[i][index][2:1] > 2'b00))
-                        tage_tables[i][index][2:1] <= tage_tables[i][index][2:1] - 1;
+            // Update loop detector
+            if (loop_state[loop_ptr] == 2'b10) begin
+                // Active loop: increment counter
+                loop_counter[loop_ptr] <= loop_counter[loop_ptr] + 1;
+                
+                // Check for loop exit
+                if (!branch_taken) begin
+                    loop_state[loop_ptr] <= 2'b00; // End loop
+                    loop_ptr <= (loop_ptr + 1) % 4; // Move to next slot
                 end
             end
+            else if (branch_taken && (pc == last_branch_pc[loop_ptr])) begin
+                // Potential loop start
+                if (loop_state[loop_ptr] == 2'b01) begin
+                    // Second occurrence - confirm loop
+                    loop_state[loop_ptr] <= 2'b10;
+                    loop_counter[loop_ptr] <= 2;
+                end
+                else begin
+                    // First occurrence
+                    loop_state[loop_ptr] <= 2'b01;
+                    loop_counter[loop_ptr] <= 1;
+                end
+            end
+            else begin
+                // Reset detection state
+                loop_state[loop_ptr] <= 2'b00;
+            end
+            
+            // Store current PC
+            last_branch_pc[loop_ptr] <= pc;
+        end
+    end
+    
+    // Loop prediction logic
+    always_comb begin
+        loop_prediction = 1'b0;
+        use_loop_pred = 1'b0;
+        
+        // Check all loop slots
+        for (int i = 0; i < 4; i++) begin
+            if (loop_state[i] == 2'b10) begin
+                // Predict taken except when counter is multiple of 4
+                loop_prediction = (loop_counter[i][1:0] != 2'b00);
+                use_loop_pred = 1'b1;
+                break; // Use first active loop found
+            end
+        end
+    end
+    
+    // Prediction tables
+    // Table 0: Bimodal
+    reg [CTR_WIDTH-1:0] bimodal_table [0:TABLE_SIZE-1];
+    
+    // Tagged tables
+    typedef struct packed {
+        logic valid; 
+        logic [TAG_WIDTH-1:0] tag;
+        logic [CTR_WIDTH-1:0] ctr;
+        logic [USEFUL_WIDTH-1:0] useful;  // Useful counter
+    } tage_entry_t;
+    
+    tage_entry_t tage_tables [1:NUM_TABLES-1][0:TABLE_SIZE-1];
+    
+    // Initialize tables
+    integer i, j;
+    always @(posedge clk) begin
+        if (reset) begin
+            for (i = 0; i < TABLE_SIZE; i = i + 1) begin
+                bimodal_table[i] <= {1'b0, 1'b1, 1'b0};  // Weakly taken (3'b010)
+            end
+            for (j = 1; j < NUM_TABLES; j = j + 1) begin
+                for (i = 0; i < TABLE_SIZE; i = i + 1) begin
+                    tage_tables[j][i] <= '{
+                        valid: 1'b0, 
+                        tag: '0, 
+                        ctr: {1'b0, 1'b1, 1'b0}, // Weakly taken
+                        useful: '0
+                    };
+                end
+            end
+        end
+    end
+    
+    // Compute indices and tags
+    wire [INDEX_WIDTH-1:0] base_index = pc[INDEX_WIDTH+1:2];
+    
+    // Wire declarations
+    wire [INDEX_WIDTH-1:0] tage_index [1:NUM_TABLES-1];
+    wire [TAG_WIDTH-1:0] tage_tag [1:NUM_TABLES-1];
+    wire [NUM_TABLES-1:1] tag_match;
+    wire [NUM_TABLES-1:1] tage_pred;
+    
+    // Generate hash computations
+    generate
+        for (genvar t = 1; t < NUM_TABLES; t++) begin: table_hash
+            // Effective history length
+            localparam int hist_len = (HISTORY_LEN[t] > GHIST_WIDTH) ? 
+                                     GHIST_WIDTH : HISTORY_LEN[t];
+            
+            // Folded history calculation
+            reg [INDEX_WIDTH-1:0] folded_index;
+            reg [TAG_WIDTH-1:0] folded_tag;
+            
+            always_comb begin
+                folded_index = '0;
+                folded_tag = '0;
+                for (int k = 0; k < hist_len; k++) begin
+                    if (k < GHIST_WIDTH) begin
+                        folded_index = folded_index ^ (global_history[k] << (k % INDEX_WIDTH));
+                        folded_tag = folded_tag ^ (global_history[k] << (k % TAG_WIDTH));
+                    end
+                end
+            end
+            
+            // Index and tag computation
+            assign tage_index[t] = pc[INDEX_WIDTH+1:2] ^ folded_index;
+            assign tage_tag[t] = pc[31:18] ^ folded_tag;
+            
+            // Tag matching
+            assign tag_match[t] = tage_tables[t][tage_index[t]].valid && 
+                                 (tage_tables[t][tage_index[t]].tag == tage_tag[t]);
+            assign tage_pred[t] = tage_tables[t][tage_index[t]].ctr[CTR_WIDTH-1];
         end
     endgenerate
-
-    // 选择最长的匹配历史表
-    assign selected_table = (tag_matches[3] ? 3 : 
-                           (tag_matches[2] ? 2 : 
-                           (tag_matches[1] ? 1 : 0)));
-
-    // 输出预测结果（最高位为方向）
-    assign prediction = table_predictions[selected_table][1];
-
-endmodule
-
-
-module loop_predictor (
-    input wire clk,
-    input wire reset,
-    input wire [31:0] pc,
-    input wire branch_taken,
-    input wire is_branch,
-    output wire prediction,
-    output wire loop_detected
-);
-
-    // ---------- 循环状态记录 ----------
-    reg [31:0] loop_pc;            // 循环开始的PC
-    reg [15:0] loop_count;         // 当前迭代次数
-    reg [15:0] loop_max;           // 总迭代次数（学习得到）
-    reg loop_active;               // 是否处于循环中
-
-    assign loop_detected = loop_active;
-    assign prediction = (loop_active && (loop_count < loop_max)) ? 1'b1 : 1'b0;
-
-    always @(posedge clk) begin
-        if (reset) begin
-            loop_active <= 0;
-            loop_count <= 0;
-        end else if (is_branch) begin
-            // 检测循环模式（简化：连续两次相同PC的TAKEN→NOT TAKEN）
-            if (!loop_active && branch_taken) begin
-                loop_pc <= pc;
-                loop_count <= 1;
-            end else if (loop_active && (pc == loop_pc)) begin
-                if (branch_taken)
-                    loop_count <= loop_count + 1;
-                else begin
-                    loop_max <= loop_count;
-                    loop_count <= 0;
+    
+    // Prediction logic
+    reg [2:0] provider;  // Provider table
+    reg [2:0] alt_provider; // Alternate provider
+    
+    // Base prediction
+    wire base_pred = bimodal_table[base_index][CTR_WIDTH-1];
+    
+    // Provider selection
+    always_comb begin
+        provider = '0;
+        alt_provider = '0;
+        
+        // Find highest priority matching table
+        for (int t = NUM_TABLES-1; t >= 1; t--) begin
+            if (tag_match[t]) begin
+                provider = t;
+                break;
+            end
+        end
+        
+        // Find alternate provider
+        if (provider > 0) begin
+            for (int t = provider-1; t >= 0; t--) begin
+                if (t == 0) begin
+                    alt_provider = 0;
+                    break;
+                end
+                else if (tag_match[t]) begin
+                    alt_provider = t;
+                    break;
                 end
             end
-            // 激活循环预测
-            loop_active <= (loop_max > 0) && (pc == loop_pc);
         end
     end
-endmodule
-
-module btb (
-    input wire clk,
-    input wire reset,
-    input wire [31:0] pc,          // 当前指令PC
-    input wire [31:0] actual_target, // 实际目标地址（来自EX阶段）
-    input wire is_branch,           // 当前指令是否是分支
-    input wire branch_taken,        // 实际分支方向
-    output wire [31:0] pred_target, // 预测的目标地址
-    output wire btb_hit             // BTB是否命中
-);
-    parameter BTB_ENTRIES = 64;        // BTB条目数（建议2的幂次）
-    parameter BTB_INDEX_BITS = 6;      // log2(BTB_ENTRIES)
-    parameter TAG_BITS = 20;           // 标签位宽（PC高位）
-    // ---------- BTB表结构 ----------
-    reg [TAG_BITS-1:0] tag [0:BTB_ENTRIES-1];  // 标签（PC高位）
-    reg [31:0] target [0:BTB_ENTRIES-1];       // 目标地址
-    reg valid [0:BTB_ENTRIES-1];               // 有效位
-
-    // ---------- 索引计算 ----------
-    wire [BTB_INDEX_BITS-1:0] index = pc[BTB_INDEX_BITS+1:2]; // 忽略PC低2位（对齐）
-    wire [TAG_BITS-1:0] current_tag = pc[31:32-TAG_BITS];     // 提取PC高位作为Tag
-
-    // ---------- 查询逻辑 ----------
-    assign btb_hit = (valid[index] && (tag[index] == current_tag));
-    assign pred_target = btb_hit ? target[index] : pc + 4;    // 未命中时默认PC+4
-
-    // ---------- 更新逻辑 ----------
+    
+    // Final prediction
+    always_comb begin
+        if (use_loop_pred) begin
+            prediction = loop_prediction;
+        end
+        else if (provider == 0) begin
+            prediction = base_pred;
+        end
+        else begin
+            prediction = tage_pred[provider];
+        end
+    end
+    
+    // Update logic
     always @(posedge clk) begin
-        if (reset) begin
-            for (integer i = 0; i < BTB_ENTRIES; i++) begin
-                valid[i] <= 0;
-                tag[i] <= 0;
-                target[i] <= 0;
+        if (!reset && is_branch) begin
+            // Update used entry
+            if (provider == 0 && !use_loop_pred) begin
+                // Update bimodal
+                if (branch_taken) begin
+                    if (bimodal_table[base_index] < (2**CTR_WIDTH)-1)
+                        bimodal_table[base_index] <= bimodal_table[base_index] + 1;
+                end
+                else begin
+                    if (bimodal_table[base_index] > 0)
+                        bimodal_table[base_index] <= bimodal_table[base_index] - 1;
+                end
             end
-        end 
-        else if (is_branch && branch_taken) begin
-            // 更新BTB条目（无论是否命中）
-            tag[index] <= current_tag;
-            target[index] <= actual_target;
-            valid[index] <= 1'b1;
+            else if (provider > 0) begin
+                // Update tagged table counter
+                tage_entry_t entry = tage_tables[provider][tage_index[provider]];
+                
+                if (branch_taken) begin
+                    if (entry.ctr < (2**CTR_WIDTH)-1)
+                        entry.ctr = entry.ctr + 1;
+                end
+                else begin
+                    if (entry.ctr > 0)
+                        entry.ctr = entry.ctr - 1;
+                end
+                
+                // Update useful counter
+                if (prediction == branch_taken) begin
+                    if (entry.useful < (2**USEFUL_WIDTH)-1)
+                        entry.useful = entry.useful + 1;
+                end
+                else if (entry.useful > 0) begin
+                    entry.useful = entry.useful - 1;
+                end
+                
+                tage_tables[provider][tage_index[provider]] <= entry;
+            end
+            
+            // Allocation on misprediction
+            if (prediction != branch_taken && !use_loop_pred) begin
+                // Try to allocate in higher tables
+                for (int t = provider+1; t < NUM_TABLES; t++) begin
+                    if (!tage_tables[t][tage_index[t]].valid || 
+                        tage_tables[t][tage_index[t]].useful < ALLOC_THRESH) begin
+                        
+                        tage_tables[t][tage_index[t]] <= '{
+                            valid: 1'b1,
+                            tag: tage_tag[t],
+                            ctr: branch_taken ? (2**CTR_WIDTH)-1 : 0,
+                            useful: 0
+                        };
+                        break;
+                    end
+                end
+            end
         end
     end
 

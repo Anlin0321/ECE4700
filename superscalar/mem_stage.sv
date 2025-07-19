@@ -109,9 +109,9 @@ module mem_stage (
             assign mem_wb_out.halt[w]         = ex_mem_in.halt[w];
             assign mem_wb_out.illegal[w]      = ex_mem_in.illegal[w];
             assign mem_wb_out.csr_op[w]       = ex_mem_in.csr_op[w];
-            assign mem_wb_out.valid[w]        = ex_mem_in.valid[w] && 
-                                              ((!ex_mem_in.rd_mem[w] && !ex_mem_in.wr_mem[w]) || 
-                                               (mem2Dcache_tag[w] != 0));
+            assign mem_wb_out.valid[w]        = ex_mem_in.valid[w]; // && 
+                                              // ((!ex_mem_in.rd_mem[w] && !ex_mem_in.wr_mem[w]) || 
+                                              //  (mem2Dcache_tag[w] != 0));
         end
     endgenerate
 
@@ -125,14 +125,14 @@ module mem_stage (
                 @(negedge clk) (`XLEN == 32) && ex_mem_in.rd_mem[w] |-> proc2Dcache_size[w] != DOUBLE;
             endproperty
             
-            always @(negedge clk) begin
-                if(`XLEN == 32) begin
-                    $display("[%t] Checking ex_mem_in.rd_mem[w] for operation %0d", $time, w);
-                    $display("  ex_mem_in.rd_mem[%0d]: %b", w, ex_mem_in.rd_mem[w]);
-                    $display("[%t] Checking no_double_in_32bit for operation %0d", $time, w);
-                    $display("  proc2Dcache_size[%0d]: %b", w, proc2Dcache_size[w]);
-                end
-            end
+//            always @(negedge clk) begin
+//                if(`XLEN == 32) begin
+//                    $display("[%t] Checking ex_mem_in.rd_mem[w] for operation %0d", $time, w);
+//                    $display("  ex_mem_in.rd_mem[%0d]: %b", w, ex_mem_in.rd_mem[w]);
+//                    $display("[%t] Checking no_double_in_32bit for operation %0d", $time, w);
+//                    $display("  proc2Dcache_size[%0d]: %b", w, proc2Dcache_size[w]);
+//                end
+//            end
             assert property (no_double_in_32bit);
         end
     endgenerate

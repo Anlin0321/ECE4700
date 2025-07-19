@@ -210,7 +210,7 @@ module ex_stage
             assign ex_mem_out.halt[w]          = id_ex_in.halt[w];
             assign ex_mem_out.illegal[w]       = id_ex_in.illegal[w];
             assign ex_mem_out.csr_op[w]        = id_ex_in.csr_op[w];
-            assign ex_mem_out.valid[w]         = id_ex_in.valid[w];
+            assign ex_mem_out.valid[w]         = id_ex_in.valid[w];  // FIXME: squash instr after branch taken
         end
     endgenerate
 

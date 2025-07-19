@@ -33,6 +33,7 @@ module scoreboard
     // ---- issue (decode) ----
     input  logic [`ISSUE_WIDTH-1:0]       issue_valid_rs1,
     input  logic [`ISSUE_WIDTH-1:0]       issue_valid_rs2,
+    input  logic [`ISSUE_WIDTH-1:0]       issue_valid_rd,
     input  logic [`ISSUE_WIDTH-1:0][4:0]  issue_rs1,
     input  logic [`ISSUE_WIDTH-1:0][4:0]  issue_rs2,
     // no issue_valid for rd since rd can be set to `ZERO_REG
@@ -48,13 +49,18 @@ module scoreboard
         if (rst) busy_counters <= '0;
         else begin
             // clear on commit
-            for (int i = 0; i < `ISSUE_WIDTH; i++)
-                if (commit_valid[i] && commit_rd[i]!=5'd0)
-                    busy_counters[commit_rd[i]] <= busy_counters[commit_rd[i]] - 1'b1;
-            // set on issue
-            for (int j = 0; j < `ISSUE_WIDTH; j++)
-                if (issue_rd[j] != `ZERO_REG)
-                    busy_counters[issue_rd[j]] <= busy_counters[issue_rd[j]] + 1'b1;
+            for (int i = 0; i < `ISSUE_WIDTH; i++) begin
+                if (commit_valid[i] && commit_rd[i]!=`ZERO_REG)
+//                    busy_counters[commit_rd[i]] <= busy_counters[commit_rd[i]] - 1'b1;
+                    busy_counters[commit_rd[i]] <= 1'b0;  // FIXME:
+            end
+            // set on issue (only not stalled)
+            if (~stall) begin
+                for (int j = 0; j < `ISSUE_WIDTH; j++) begin
+                    if (issue_valid_rd[j] && issue_rd[j] != `ZERO_REG)
+                        busy_counters[issue_rd[j]] <= busy_counters[issue_rd[j]] + 1'b1;
+                end
+            end
         end
     end
 
@@ -69,8 +75,8 @@ module scoreboard
     always_comb begin
         hazard = 1'b0;
         for (int j = 0; j < `ISSUE_WIDTH; j++) begin
-            if (issue_valid_rs1[j] && issue_rs1[j]!=5'd0 && busy_counters[issue_rs1[j]]) hazard = 1'b1;
-            if (issue_valid_rs2[j] && issue_rs2[j]!=5'd0 && busy_counters[issue_rs2[j]]) hazard = 1'b1;
+            if (issue_valid_rs1[j] && issue_rs1[j]!=`ZERO_REG && busy_counters[issue_rs1[j]]) hazard = 1'b1;
+            if (issue_valid_rs2[j] && issue_rs2[j]!=`ZERO_REG && busy_counters[issue_rs2[j]]) hazard = 1'b1;
         end
     end
     assign stall = hazard;

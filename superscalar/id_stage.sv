@@ -14,214 +14,6 @@
 `include "sys_defs.svh"
 
 
-//  // Decode an instruction: given instruction bits IR produce the
-//  // appropriate datapath control signals.
-//  //
-//  // This is a *combinational* module (basically a PLA).
-//  //
-//module decoder(
-
-//	//input [31:0] inst,
-//	//input valid_inst_in,  // ignore inst when low, outputs will
-//	                      // reflect noop (except valid_inst)
-//	//see sys_defs.svh for definition
-//	input IF_ID_PACKET if_packet,
-	
-//	output ALU_OPA_SELECT opa_select,
-//	output ALU_OPB_SELECT opb_select,
-//	output DEST_REG_SEL   dest_reg, // mux selects
-//	output ALU_FUNC       alu_func,
-//	output logic rd_mem, wr_mem, cond_branch, uncond_branch,
-//	output logic csr_op,    // used for CSR operations, we only used this as 
-//	                        //a cheap way to get the return code out
-//	output logic halt,      // non-zero on a halt
-//	output logic illegal,    // non-zero on an illegal instruction
-//	output logic valid_inst  // for counting valid instructions executed
-//	                        // and for making the fetch stage die on halts/
-//	                        // keeping track of when to allow the next
-//	                        // instruction out of fetch
-//	                        // 0 for HALT and illegal instructions (die on halt)
-
-//);
-
-//	INST inst;
-//	logic valid_inst_in;
-	
-//	assign inst          = if_packet.inst;
-//	assign valid_inst_in = if_packet.valid;
-//	assign valid_inst    = valid_inst_in & ~illegal;
-	
-//	always_comb begin
-//		// default control values:
-//		// - valid instructions must override these defaults as necessary.
-//		//	 opa_select, opb_select, and alu_func should be set explicitly.
-//		// - invalid instructions should clear valid_inst.
-//		// - These defaults are equivalent to a noop
-//		// * see sys_defs.vh for the constants used here
-//		opa_select = OPA_IS_RS1;
-//		opb_select = OPB_IS_RS2;
-//		alu_func = ALU_ADD;
-//		dest_reg = DEST_NONE;
-//		csr_op = `FALSE;
-//		rd_mem = `FALSE;
-//		wr_mem = `FALSE;
-//		cond_branch = `FALSE;
-//		uncond_branch = `FALSE;
-//		halt = `FALSE;
-//		illegal = `FALSE;
-//		if(valid_inst_in) begin
-//			casez (inst) 
-//				`RV32_LUI: begin
-//					dest_reg   = DEST_RD;
-//					opa_select = OPA_IS_ZERO;
-//					opb_select = OPB_IS_U_IMM;
-//				end
-//				`RV32_AUIPC: begin
-//					dest_reg   = DEST_RD;
-//					opa_select = OPA_IS_PC;
-//					opb_select = OPB_IS_U_IMM;
-//				end
-//				`RV32_JAL: begin
-//					dest_reg      = DEST_RD;
-//					opa_select    = OPA_IS_PC;
-//					opb_select    = OPB_IS_J_IMM;
-//					uncond_branch = `TRUE;
-//				end
-//				`RV32_JALR: begin
-//					dest_reg      = DEST_RD;
-//					opa_select    = OPA_IS_RS1;
-//					opb_select    = OPB_IS_I_IMM;
-//					uncond_branch = `TRUE;
-//				end
-//				`RV32_BEQ, `RV32_BNE, `RV32_BLT, `RV32_BGE,
-//				`RV32_BLTU, `RV32_BGEU: begin
-//					opa_select  = OPA_IS_PC;
-//					opb_select  = OPB_IS_B_IMM;
-//					cond_branch = `TRUE;
-//				end
-//				`RV32_LB, `RV32_LH, `RV32_LW,
-//				`RV32_LBU, `RV32_LHU: begin
-//					dest_reg   = DEST_RD;
-//					opb_select = OPB_IS_I_IMM;
-//					rd_mem     = `TRUE;
-//				end
-//				`RV32_SB, `RV32_SH, `RV32_SW: begin
-//					opb_select = OPB_IS_S_IMM;
-//					wr_mem     = `TRUE;
-//				end
-//				`RV32_ADDI: begin
-//					dest_reg   = DEST_RD;
-//					opb_select = OPB_IS_I_IMM;
-//				end
-//				`RV32_SLTI: begin
-//					dest_reg   = DEST_RD;
-//					opb_select = OPB_IS_I_IMM;
-//					alu_func   = ALU_SLT;
-//				end
-//				`RV32_SLTIU: begin
-//					dest_reg   = DEST_RD;
-//					opb_select = OPB_IS_I_IMM;
-//					alu_func   = ALU_SLTU;
-//				end
-//				`RV32_ANDI: begin
-//					dest_reg   = DEST_RD;
-//					opb_select = OPB_IS_I_IMM;
-//					alu_func   = ALU_AND;
-//				end
-//				`RV32_ORI: begin
-//					dest_reg   = DEST_RD;
-//					opb_select = OPB_IS_I_IMM;
-//					alu_func   = ALU_OR;
-//				end
-//				`RV32_XORI: begin
-//					dest_reg   = DEST_RD;
-//					opb_select = OPB_IS_I_IMM;
-//					alu_func   = ALU_XOR;
-//				end
-//				`RV32_SLLI: begin
-//					dest_reg   = DEST_RD;
-//					opb_select = OPB_IS_I_IMM;
-//					alu_func   = ALU_SLL;
-//				end
-//				`RV32_SRLI: begin
-//					dest_reg   = DEST_RD;
-//					opb_select = OPB_IS_I_IMM;
-//					alu_func   = ALU_SRL;
-//				end
-//				`RV32_SRAI: begin
-//					dest_reg   = DEST_RD;
-//					opb_select = OPB_IS_I_IMM;
-//					alu_func   = ALU_SRA;
-//				end
-//				`RV32_ADD: begin
-//					dest_reg   = DEST_RD;
-//				end
-//				`RV32_SUB: begin
-//					dest_reg   = DEST_RD;
-//					alu_func   = ALU_SUB;
-//				end
-//				`RV32_SLT: begin
-//					dest_reg   = DEST_RD;
-//					alu_func   = ALU_SLT;
-//				end
-//				`RV32_SLTU: begin
-//					dest_reg   = DEST_RD;
-//					alu_func   = ALU_SLTU;
-//				end
-//				`RV32_AND: begin
-//					dest_reg   = DEST_RD;
-//					alu_func   = ALU_AND;
-//				end
-//				`RV32_OR: begin
-//					dest_reg   = DEST_RD;
-//					alu_func   = ALU_OR;
-//				end
-//				`RV32_XOR: begin
-//					dest_reg   = DEST_RD;
-//					alu_func   = ALU_XOR;
-//				end
-//				`RV32_SLL: begin
-//					dest_reg   = DEST_RD;
-//					alu_func   = ALU_SLL;
-//				end
-//				`RV32_SRL: begin
-//					dest_reg   = DEST_RD;
-//					alu_func   = ALU_SRL;
-//				end
-//				`RV32_SRA: begin
-//					dest_reg   = DEST_RD;
-//					alu_func   = ALU_SRA;
-//				end
-//				`RV32_MUL: begin
-//					dest_reg   = DEST_RD;
-//					alu_func   = ALU_MUL;
-//				end
-//				`RV32_MULH: begin
-//					dest_reg   = DEST_RD;
-//					alu_func   = ALU_MULH;
-//				end
-//				`RV32_MULHSU: begin
-//					dest_reg   = DEST_RD;
-//					alu_func   = ALU_MULHSU;
-//				end
-//				`RV32_MULHU: begin
-//					dest_reg   = DEST_RD;
-//					alu_func   = ALU_MULHU;
-//				end
-//				`RV32_CSRRW, `RV32_CSRRS, `RV32_CSRRC: begin
-//					csr_op = `TRUE;
-//				end
-//				`WFI: begin
-//					halt = `TRUE;
-//				end
-//				default: illegal = `TRUE;
-
-//		endcase // casez (inst)
-//		end // if(valid_inst_in)
-//	end // always
-//endmodule // decoder
-
-
 module id_stage (
     input  logic          clk, rst,
 
@@ -234,6 +26,7 @@ module id_stage (
     // ---- scoreboard feedback ----
     output logic [`ISSUE_WIDTH-1:0]         issue_valid_rs1,
     output logic [`ISSUE_WIDTH-1:0]         issue_valid_rs2,
+    output logic [`ISSUE_WIDTH-1:0]         issue_valid_rd,
 //    output logic [`ISSUE_WIDTH-1:0][4:0]    issue_rs1,
 //    output logic [`ISSUE_WIDTH-1:0][4:0]    issue_rs2,
     output logic [`ISSUE_WIDTH-1:0][4:0]    issue_rd,
@@ -248,14 +41,16 @@ module id_stage (
 
     // ---- ID/EX output ----
     // Seperated into 2 packets to handle intra-lane stall
-//    output ID_EX_PACKET   id_ex_out,
-    output ID_EX_PACKET   id_ex_forward_out,
-    output ID_EX_PACKET   id_ex_stall_out,
+    output ID_EX_PACKET             id_ex_out,
+    output logic [`ISSUE_WIDTH-1:0] forward,
+//    output ID_EX_PACKET   id_ex_forward_out,
+//    output ID_EX_PACKET   id_ex_stall_out,
 
 //    // New inputs for stall signals
 //    input  logic [`ISSUE_WIDTH-1:0] stall;
     // New inputs for stall signals
     input  logic                     stall,
+    input  logic                     flush,
     // New outputs  for kill signals
     output logic [`ISSUE_WIDTH-1:0]  kill
 );
@@ -284,8 +79,8 @@ module id_stage (
         // ---- Register index extraction ----
 //        assign rf_rs1_idx[w] = stall ? id_ex_in.rs1_idx[w] : if_id_in.inst[w].r.rs1;
 //        assign rf_rs2_idx[w] = stall ? id_ex_in.rs2_idx[w] : if_id_in.inst[w].r.rs2;
-        assign rf_rs1_idx[w] = if_id_in.inst[w].r.rs1;
-        assign rf_rs2_idx[w] = if_id_in.inst[w].r.rs2;
+        assign rf_rs1_idx[w] = id_ex_out.rs1_idx[w];
+        assign rf_rs2_idx[w] = id_ex_out.rs2_idx[w];
     
         // ---- Pass read values straight through ----
         assign id_ex_out.rs1_value[w] = rf_rs1_val[w];
@@ -311,6 +106,8 @@ module id_stage (
         );
     
         // ---- Output muxes with stall logic ----
+        assign id_ex_out.rs1_idx[w] = stall ? id_ex_in.rs1_idx[w] : if_id_in.inst[w].r.rs1;
+        assign id_ex_out.rs2_idx[w] = stall ? id_ex_in.rs2_idx[w] : if_id_in.inst[w].r.rs2;
         assign id_ex_out.opa_select[w] = stall ? id_ex_in.opa_select[w] : opa_select_int;
         assign id_ex_out.opb_select[w] = stall ? id_ex_in.opb_select[w] : opb_select_int;
         assign id_ex_out.alu_func[w] = stall ? id_ex_in.alu_func[w] : alu_func_int;
@@ -321,8 +118,9 @@ module id_stage (
         assign id_ex_out.csr_op[w] = stall ? id_ex_in.csr_op[w] : csr_op_int;
         assign id_ex_out.halt[w] = stall ? id_ex_in.halt[w] : halt_int;
         assign id_ex_out.illegal[w] = stall ? id_ex_in.illegal[w] : illegal_int;
-        assign id_ex_out.valid[w] = stall ? id_ex_in.valid[w] : valid_inst_int;
-    
+        assign id_ex_out.valid[w] = flush ? 1'b0 :  // if flush, squash the instr
+                                    stall ? id_ex_in.valid[w] : valid_inst_int;
+
         // ---- Destination register selection ----
         always_comb begin
             if (stall) begin
@@ -340,20 +138,18 @@ module id_stage (
         assign id_ex_out.inst[w] = stall ? id_ex_in.inst[w] : if_id_in.inst[w];
         assign id_ex_out.NPC[w] = stall ? id_ex_in.NPC[w] : if_id_in.NPC[w];
         assign id_ex_out.PC[w] = stall ? id_ex_in.PC[w] : if_id_in.PC[w];
-    
-//        // ---- Lane-local outputs ----
-//        assign issue_valid_rs1[w] = id_ex_out.valid[w] & (id_ex_out.opa_select[w] == OPA_IS_RS1);
-//        assign issue_valid_rs2[w] = id_ex_out.valid[w] & (id_ex_out.opb_select[w] == OPB_IS_RS2);
-//        assign issue_rs1[w] = rf_rs1_idx[w];
-//        assign issue_rs2[w] = rf_rs2_idx[w];
-//        assign issue_rd[w] = id_ex_out.dest_reg_idx[w];
 
         // ---- Lane-local outputs ----
-        assign issue_valid_rs1[w] = id_ex_forward_out.valid[w] & (id_ex_forward_out.opa_select[w] == OPA_IS_RS1);
-        assign issue_valid_rs2[w] = id_ex_forward_out.valid[w] & (id_ex_forward_out.opb_select[w] == OPB_IS_RS2);
-//        assign issue_rs1[w] = rf_rs1_idx[w];
-//        assign issue_rs2[w] = rf_rs2_idx[w];
-        assign issue_rd[w] = id_ex_forward_out.dest_reg_idx[w];
+        logic rs1_dependency;
+        logic rs2_dependency;
+        logic scheduled_forward;
+        assign rs1_dependency = (id_ex_out.opa_select[w] == OPA_IS_RS1 | id_ex_out.cond_branch[w]);
+        assign rs2_dependency = (id_ex_out.opb_select[w] == OPB_IS_RS2 | id_ex_out.cond_branch[w]);
+        assign scheduled_forward = id_ex_out.valid[w] & forward[w];
+        assign issue_valid_rs1[w] = scheduled_forward & rs1_dependency;
+        assign issue_valid_rs2[w] = scheduled_forward & rs2_dependency;
+        assign issue_valid_rd [w] = scheduled_forward;
+        assign issue_rd[w] = id_ex_out.dest_reg_idx[w];
     end endgenerate
 
         // Forwarding stalling logic
@@ -374,11 +170,12 @@ module id_stage (
         kill = '0;
         for (i = 1; i < `ISSUE_WIDTH; i++) begin
             for (j = 0; j < i; j++) begin
-                if (id_ex_out.valid[i]) begin
-                    logic rs1_conflict = (rf_rs1_idx[i] == id_ex_out.dest_reg_idx[j] && id_ex_out.dest_reg_idx[j] != 0);
-                    logic rs2_conflict = (rf_rs2_idx[i] == id_ex_out.dest_reg_idx[j] && id_ex_out.dest_reg_idx[j] != 0);
+                if (id_ex_out.valid[i] & id_ex_out.valid[j]) begin
                     // logic rd_conflict = (id_ex_out.dest_reg_idx[i] == id_ex_out.dest_reg_idx[j] && id_ex_out.dest_reg_idx[i] != 0);
-                    if (rs1_conflict || rs2_conflict)
+                    if (
+                        (rf_rs1_idx[i] == id_ex_out.dest_reg_idx[j] && id_ex_out.dest_reg_idx[j] != `ZERO_REG) ||
+                        (rf_rs2_idx[i] == id_ex_out.dest_reg_idx[j] && id_ex_out.dest_reg_idx[j] != `ZERO_REG)
+                    )
                         kill[i] = 1'b1;
                  end
             end
@@ -386,19 +183,19 @@ module id_stage (
     end
 
     // intra-lane hazards stall logic
+    logic kill_start;
 	always_comb begin
-	   logic kill_start = 1'b0;
-	   id_ex_stall_out = id_ex_out;
-	   id_ex_forward_out = id_ex_out;
+	   kill_start = 1'b0;
 	   for (int i = 0; i < `ISSUE_WIDTH; i++) begin
 	       if (kill[i])
                 kill_start = 1'b1;
 
-            // id_ex_stall_packet keeps track of the stalled instructions
-            id_ex_stall_out.valid[i] = kill_start & id_ex_stall_out.valid[i];
+//            // id_ex_stall_packet keeps track of the stalled instructions
+//            id_ex_stall_out.valid[i] = kill_start & id_ex_stall_out.valid[i];
 
-            // id_ex_packer keeps track of the forwarded instructions
-            id_ex_forward_out.valid[i] = ~kill_start & id_ex_forward_out.valid[i];
+//            // id_ex_packer keeps track of the forwarded instructions
+//            id_ex_forward_out.valid[i] = ~kill_start & id_ex_forward_out.valid[i];
+	           forward[i] = ~kill_start;
 	   end
 	end
 

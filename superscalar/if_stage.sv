@@ -33,11 +33,14 @@ module if_stage (
 
     // ---- program counter ----
     XLEN_t PC_q, PC_n;
+    logic PC_enable;
+    
+    assign PC_enable = !stall | flush;
 
     always_ff @(posedge clk or posedge rst) begin
         if (rst) 
             PC_q <= `PC_RESET;
-        else if (!stall) 
+        else if (PC_enable) 
             PC_q <= PC_n;
     end
 
@@ -54,7 +57,8 @@ module if_stage (
     generate
         for (w = 0; w < `ISSUE_WIDTH; w++) begin : G_ICACHE
             // Send fetch request for this instruction slot
-            assign proc2Icache_command[w] = (stall || flush) ? BUS_NONE : BUS_LOAD;
+//            assign proc2Icache_command[w] = (stall || flush) ? BUS_NONE : BUS_LOAD;
+            assign proc2Icache_command[w] = PC_enable ? BUS_LOAD : BUS_NONE;
             assign proc2Icache_addr[w]    = PC_q + w*4;  // word-aligned address
             
             // Process cache response

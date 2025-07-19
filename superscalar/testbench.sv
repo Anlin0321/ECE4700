@@ -29,6 +29,7 @@ module testbench;
     logic        clock;
     logic        reset;
     logic [31:0] clock_count;
+    logic [31:0] instr_count;
     logic [63:0] debug_counter;  // counter for timeout
     
     // Superscalar memory interfaces
@@ -51,7 +52,10 @@ module testbench;
 `ifndef CACHE_MODE
     MEM_SIZE [`ISSUE_WIDTH-1:0]      proc2Dcache_size;
 `endif
-    
+
+	logic  [$clog2(`ISSUE_WIDTH+1)-1:0] pipeline_completed_insts;
+	EXCEPTION_CODE   pipeline_error_status;
+
     // Instantiate the Pipeline
     pipeline core(
         // Inputs
@@ -74,7 +78,10 @@ module testbench;
 `endif
         .mem2Dcache_response(mem2Dcache_response),
         .mem2Dcache_data    (mem2Dcache_data),
-        .mem2Dcache_tag     (mem2Dcache_tag)
+        .mem2Dcache_tag     (mem2Dcache_tag),
+        
+        .pipeline_completed_insts(pipeline_completed_insts),
+		.pipeline_error_status(pipeline_error_status)
     );
     
     // Instantiate the Instruction Memory
@@ -111,9 +118,25 @@ module testbench;
         clock = ~clock;
     end
     
+    // Task to display # of elapsed clock edges
+	task show_clk_count;
+		real cpi;
+		
+		begin
+			cpi = (clock_count + 1.0) / instr_count;
+			$display("@@  %0d cycles / %0d instrs = %f CPI\n@@",
+			          clock_count+1, instr_count, cpi);
+			$display("@@  %4.2f ns total time to execute\n@@\n",
+			          clock_count*`VERILOG_CLOCK_PERIOD);
+		end
+	endtask  // task show_clk_count 
+    
     // Simulate memory
 //    string program_name = "program.mem";
-    string program_name = "no_hazard.mem";
+//    string program_name = "no_hazard.mem";
+//    string program_name = "testbench1.mem";
+    string program_name = "testbench2.mem";
+
     task automatic load_program;
         $readmemh(program_name, mem.instr_memory);
     endtask
@@ -182,8 +205,10 @@ module testbench;
     always @(posedge clock) begin
         if(reset) begin
             clock_count <= `SD 0;
+            instr_count <= `SD 0;
         end else begin
             clock_count <= `SD (clock_count + 1);
+            instr_count <= `SD (instr_count + pipeline_completed_insts);
         end
     end  
     
@@ -198,15 +223,32 @@ module testbench;
             `SD;
             
             // Terminate simulation after timeout
-            if (debug_counter > 50000000) begin
-                $display("@@@ Data Memory contents hex on left, decimal on right: ");
-                show_mem_with_decimal(0, `MEM_64BIT_LINES - 1); 
-                $display("@@  %t : System halted due to timeout", $realtime);
-                $display("@@  %0d cycles", clock_count);
-                $display("@@  %4.2f ns total time to execute", 
-                          clock_count*`VERILOG_CLOCK_PERIOD);
-                #100 $finish;
-            end
+            if(pipeline_error_status != NO_ERROR || debug_counter > 50000000) begin
+				$display("@@@ Unified Memory contents hex on left, decimal on right: ");
+				show_mem_with_decimal(0,`MEM_64BIT_LINES - 1); 
+				// 8Bytes per line, 16kB total
+				
+				$display("@@  %t : System halted\n@@", $realtime);
+				
+				case(pipeline_error_status)
+					LOAD_ACCESS_FAULT:  
+						$display("@@@ System halted on memory error");
+					HALTED_ON_WFI:          
+						$display("@@@ System halted on WFI instruction");
+					ILLEGAL_INST:
+						$display("@@@ System halted on illegal instruction");
+					default: 
+						$display("@@@ System halted on unknown error code %x", 
+							pipeline_error_status);
+				endcase
+				$display("@@@\n@@");
+
+				// Count the completed instr from the final cycle
+				instr_count = (instr_count + pipeline_completed_insts);
+				show_clk_count;
+//				print_close(); // close the pipe_print output file
+				#100 $finish;
+			end
             debug_counter <= debug_counter + 1;
         end
     end 

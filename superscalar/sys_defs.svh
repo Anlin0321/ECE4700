@@ -320,6 +320,10 @@ typedef struct {
     XLEN_t              rs1_value    [`IW_RANGE];
     XLEN_t              rs2_value    [`IW_RANGE];
 
+    // New fields for register idx
+    XLEN_t              rs1_idx      [`IW_RANGE];
+    XLEN_t              rs2_idx      [`IW_RANGE];
+
     ALU_OPA_SELECT      opa_select   [`IW_RANGE];
     ALU_OPB_SELECT      opb_select   [`IW_RANGE];
     INST                inst         [`IW_RANGE];
@@ -378,11 +382,18 @@ typedef struct {
 } MEM_WB_PACKET;
 
 //--------------------------------------------------------------
-//  Helper: "OR-reduce any valid"
+//  Helper functions
 //--------------------------------------------------------------
-//function automatic logic any_valid (input logic valid_vec [`IW_RANGE]);
-//    any_valid = |valid_vec;
-//endfunction
+
+function automatic logic [`IW_RANGE] unpacked_and(
+    input logic vec1 [`IW_RANGE],
+    input logic vec2 [`IW_RANGE]
+);
+    for (int i = 0; i < `ISSUE_WIDTH; i++) begin
+        unpacked_and[i] = vec1[i] & vec2[i];
+    end
+endfunction
+
 function automatic logic any_valid_packed (input logic [`IW_RANGE] vec);
     automatic logic r;
     r = 1'b0;
@@ -399,6 +410,14 @@ function automatic logic any_valid_unpacked (input logic vec [`IW_RANGE]);
         r |= vec[i];
     end
     any_valid_unpacked = r;
+endfunction
+
+function automatic logic [$clog2(`ISSUE_WIDTH+1)-1:0] count_valid(input logic vec [`IW_RANGE]);
+    integer i;
+    count_valid = 0;
+    for (i = 0; i < `ISSUE_WIDTH; i++) begin
+        count_valid += vec[i];
+    end
 endfunction
 
 `endif // __SYS_DEFS_VH__

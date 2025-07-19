@@ -23,7 +23,7 @@ module regfile
     output logic [`ISSUE_WIDTH-1:0] [`XLEN-1:0]      rdb_out,
 
     // ---- write side: up to 3 destinations per cycle ----
-    input  logic                                    clk,
+    input  logic                                    clk, rst,
     input  logic [`ISSUE_WIDTH-1:0]                 wr_en,
     input  logic [`ISSUE_WIDTH-1:0] [4:0]           wr_idx ,
     input  logic [`ISSUE_WIDTH-1:0] [`XLEN-1:0]     wr_data
@@ -35,9 +35,16 @@ module regfile
     // ---- three write ports (priority 0 > 1 > 2) ----
     integer i;
     always_ff @(posedge clk) begin
-        for (i = 0; i < `ISSUE_WIDTH; i++) begin
-            if (wr_en[i] && (wr_idx[i] != 5'd0))
-                rf[wr_idx[i]] <= wr_data[i];
+        // For simplicity, add rst to regfile
+        if (rst) begin
+            for (i = 0; i < 32; i++) begin
+                rf[i] <= '0;
+            end
+        end else begin
+            for (i = 0; i < `ISSUE_WIDTH; i++) begin
+                if (wr_en[i] && (wr_idx[i] != 5'd0))
+                    rf[wr_idx[i]] <= wr_data[i];
+            end
         end
     end
 

@@ -37,7 +37,7 @@ module pipeline (
     input  logic [`ISSUE_WIDTH-1:0] [3:0]   mem2Dcache_tag,
     
     // ---- Monitor Signals ----
-    output logic [3:0]  pipeline_completed_insts,
+    output logic [$clog2(`ISSUE_WIDTH+1)-1:0]  pipeline_completed_insts,
     output EXCEPTION_CODE   pipeline_error_status
 );
 
@@ -46,7 +46,8 @@ module pipeline (
     // ---------------------------------------------------------
     IF_ID_PACKET   if_packet, if_id_packet;
 //    ID_EX_PACKET   id_packet, id_ex_packet, id_ex_forward_packet, id_ex_stall_packet;
-    ID_EX_PACKET   id_stall_packet, id_forward_packet, id_ex_forward_packet, id_ex_stall_packet;
+    ID_EX_PACKET   id_packet, id_ex_forward_packet, id_ex_stall_packet;
+//    ID_EX_PACKET   id_stall_packet, id_forward_packet, id_ex_forward_packet, id_ex_stall_packet;
     EX_MEM_PACKET  ex_packet, ex_mem_packet;
     MEM_WB_PACKET  mem_packet, mem_wb_packet;
     
@@ -76,14 +77,26 @@ module pipeline (
     logic ex_mem_enable;
 
     logic [`ISSUE_WIDTH-1:0]  id_kills;
+    logic [`ISSUE_WIDTH-1:0]  id_forwards;
     
     // ---------------------------------------------------------
     // Internal Monitors
     // ---------------------------------------------------------
     logic mem_wb_illegal;
     logic mem_wb_halt;
-    assign mem_wb_illegal = any_valid_unpacked(mem_wb_packet.illegal);
+    logic halted;
+
+    always_ff @(posedge clk) begin
+        if (rst)
+            halted = 1'b0;
+        else if (mem_wb_halt)
+            halted = 1'b1;
+    end
+
+    assign mem_wb_illegal = any_valid_packed(unpacked_and(mem_wb_packet.illegal, mem_wb_packet.valid));
     assign mem_wb_halt = any_valid_unpacked(mem_wb_packet.halt);
+
+    assign pipeline_completed_insts = count_valid(mem_wb_packet.valid);
     assign pipeline_error_status =  mem_wb_illegal             ? ILLEGAL_INST :
 	                                mem_wb_halt                ? HALTED_ON_WFI :
 	                                // (mem2proc_response==4'h0)  ? LOAD_ACCESS_FAULT :
@@ -167,7 +180,8 @@ module pipeline (
     always @(posedge clk) begin
         if (rst) begin
             $display("\n[%0t] SYSTEM RESET", $time);
-        end else begin
+
+        end else if (~halted) begin
             $display("\n[%0t] CYCLE %0d", $time, $time/10);
 
             // IF/ID Stage
@@ -176,16 +190,8 @@ module pipeline (
 
             // ID/EX Stage
             $display("--- ID Stage Output ---");
-            print_id_ex_packet(id_forward_packet);
-
-            if (stall) begin
-                $display("--- ID Stage Stalled Output ---");
-                print_id_ex_packet(id_stall_packet);
-                $display("--- ID/EX Reg Output ---");
-                print_id_ex_packet(id_ex_forward_packet);
-                $display("--- ID/ID Reg Stalled Output ---");
-                print_id_ex_packet(id_ex_stall_packet);
-            end
+//            print_id_ex_packet(id_forward_packet);
+            print_id_ex_packet(id_packet);
 
             // EX/MEM Stage
             $display("--- EX Stage Output ---");
@@ -232,6 +238,7 @@ module pipeline (
         .rda_out   (rs1_val),
         .rdb_out   (rs2_val),
         .clk       (clk),
+        .rst       (rst),
         .wr_en     (rf_wr_en),
         .wr_idx    (rf_wr_idx),
         .wr_data   (rf_wr_data)
@@ -241,6 +248,7 @@ module pipeline (
     logic sb_stall;
     logic [`ISSUE_WIDTH-1:0] issue_valid_rs1;
     logic [`ISSUE_WIDTH-1:0] issue_valid_rs2;
+    logic [`ISSUE_WIDTH-1:0] issue_valid_rd;
     scoreboard U_SB (
         .clk          (clk),
         .rst          (rst),
@@ -248,6 +256,7 @@ module pipeline (
         .commit_rd    (rf_wr_idx),
         .issue_valid_rs1  (issue_valid_rs1),
         .issue_valid_rs2  (issue_valid_rs2),
+        .issue_valid_rd   (issue_valid_rd),
         .issue_rs1    (rs1_idx),
         .issue_rs2    (rs2_idx),
         .issue_rd     (rd_idx),
@@ -260,8 +269,8 @@ module pipeline (
 ////                                              //
 ////////////////////////////////////////////////////
 
-//	assign if_id_enable = 1'b1; // always enabled
-    assign if_id_enable = ~stall; // if stalled, we want if_id registers freeze
+	assign if_id_enable = 1'b1; // always enabled
+//    assign if_id_enable = ~stall; // if stalled, we want if_id registers freeze
 	// synopsys sync_set_reset "reset"
 	always_ff @(posedge clk) begin
 		if (rst) begin 
@@ -292,16 +301,19 @@ module pipeline (
 
         .issue_valid_rs1 (issue_valid_rs1),
         .issue_valid_rs2 (issue_valid_rs2),
+        .issue_valid_rd  (issue_valid_rd),
         .issue_rd        (rd_idx),
         .rf_rs1_idx  (rs1_idx),
         .rf_rs2_idx  (rs2_idx),
         .rf_rs1_val  (rs1_val),
         .rf_rs2_val  (rs2_val),
 
-//        .id_ex_out   (id_packet),
-        .id_ex_forward_out  (id_forward_packet),
-        .id_ex_stall_out    (id_stall_packet),
+        .id_ex_out   (id_packet),
+//        .id_ex_forward_out  (id_forward_packet),
+//        .id_ex_stall_out    (id_stall_packet),
+        .forward     (id_forwards),
         .stall       (last_stalled),
+        .flush       (flush),
         .kill        (id_kills)
     );
     
@@ -351,6 +363,8 @@ module pipeline (
                 id_ex_forward_packet.PC[i]            <= {`XLEN{1'b0}};
                 id_ex_forward_packet.rs1_value[i]     <= {`XLEN{1'b0}};
                 id_ex_forward_packet.rs2_value[i]     <= {`XLEN{1'b0}};
+                id_ex_forward_packet.rs1_idx[i]     <= {`XLEN{1'b0}};
+                id_ex_forward_packet.rs2_idx[i]     <= {`XLEN{1'b0}};
                 id_ex_forward_packet.opa_select[i]    <= OPA_IS_RS1;  // Default to using RS1
                 id_ex_forward_packet.opb_select[i]    <= OPB_IS_RS2;  // Default to using RS2
                 id_ex_forward_packet.inst[i]         <= `NOP;        // Insert NOP instructions
@@ -369,6 +383,8 @@ module pipeline (
                 id_ex_stall_packet.PC[i]            <= {`XLEN{1'b0}};
                 id_ex_stall_packet.rs1_value[i]     <= {`XLEN{1'b0}};
                 id_ex_stall_packet.rs2_value[i]     <= {`XLEN{1'b0}};
+                id_ex_stall_packet.rs1_idx[i]     <= {`XLEN{1'b0}};
+                id_ex_stall_packet.rs2_idx[i]     <= {`XLEN{1'b0}};
                 id_ex_stall_packet.opa_select[i]    <= OPA_IS_RS1;  // Default to using RS1
                 id_ex_stall_packet.opb_select[i]    <= OPB_IS_RS2;  // Default to using RS2
                 id_ex_stall_packet.inst[i]         <= `NOP;        // Insert NOP instructions
@@ -384,15 +400,22 @@ module pipeline (
                 id_ex_stall_packet.valid[i]        <= 1'b0;        // Invalid instruction
 			end
         end else if (sb_stall) begin
-            id_ex_stall_packet <= `SD id_stall_packet;
-            for (int i=0; i < `ISSUE_WIDTH; i++) begin
+//            id_ex_stall_packet <= `SD id_stall_packet;
+            id_ex_stall_packet <= `SD id_packet;
+
+            for (int i = 0; i < `ISSUE_WIDTH; i++) begin
                 id_ex_forward_packet.valid[i] <= `SD 1'b0;
-                id_ex_stall_packet.valid[i]   <= `SD 1'b1;
+//                id_ex_stall_packet.valid[i]   <= `SD id_forward_packet.valid[i]; 
             end
+
 		end else begin // if (reset)
 			if (id_ex_enable) begin
-				id_ex_forward_packet <= `SD id_forward_packet;
-				id_ex_stall_packet <= `SD id_stall_packet;
+				id_ex_forward_packet <= `SD id_packet;
+				id_ex_stall_packet <= `SD id_packet;
+				for (int i = 0; i < `ISSUE_WIDTH; i++) begin
+                    id_ex_forward_packet.valid[i] <= `SD id_packet.valid[i] & id_forwards[i];
+                    id_ex_stall_packet.valid[i]   <= `SD id_packet.valid[i] & ~id_forwards[i]; 
+                end
 			end // if
 		end // else: !if(reset)
 	end // always

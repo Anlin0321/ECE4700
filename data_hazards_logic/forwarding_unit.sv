@@ -21,8 +21,10 @@ module forwarding_unit (
         for (int j = 0; j < `ISSUE_WIDTH; j++) begin
             ex_mem_regwrite[j] = ex_mem_q.valid[j] && !ex_mem_q.halt[j] && !ex_mem_q.illegal[j] &&
                                  !ex_mem_q.wr_mem[j] && (ex_mem_q.dest_reg_idx[j] != 0);
+            
+            // For MEM/WB stage, we don't have wr_mem, so we just check the other conditions
             mem_wb_regwrite[j] = mem_wb_q.valid[j] && !mem_wb_q.halt[j] && !mem_wb_q.illegal[j] &&
-                                 !mem_wb_q.wr_mem[j] && (mem_wb_q.dest_reg_idx[j] != 0);
+                                 (mem_wb_q.dest_reg_idx[j] != 0);
         end
     end
 
@@ -30,8 +32,8 @@ module forwarding_unit (
     always_comb begin
         for (int i = 0; i < `ISSUE_WIDTH; i++) begin
             // Extract source registers of instruction i in EX stage
-            logic [4:0] rs1 = id_ex_q.inst[i][19:15];
-            logic [4:0] rs2 = id_ex_q.inst[i][24:20];
+            automatic logic [4:0] rs1 = id_ex_q.inst[i][19:15];
+            automatic logic [4:0] rs2 = id_ex_q.inst[i][24:20];
 
             // Default: no forwarding
             forwardA_stage[i] = 2'b00;
@@ -45,7 +47,7 @@ module forwarding_unit (
                     if (mem_wb_regwrite[j]) begin
                         if (mem_wb_q.dest_reg_idx[j] == rs1) begin
                             forwardA_stage[i] = 2'b10;
-                            forwardA_slot[i]  = JK;
+                            forwardA_slot[i]  = j;
                         end
                         if (mem_wb_q.dest_reg_idx[j] == rs2) begin
                             forwardB_stage[i] = 2'b10;

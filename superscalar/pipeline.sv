@@ -102,6 +102,12 @@ module pipeline (
 	                                // (mem2proc_response==4'h0)  ? LOAD_ACCESS_FAULT :
 	                                NO_ERROR;
 
+    // Forwarding unit outputs
+    logic [1:0] forwardA_stage [`ISSUE_WIDTH-1:0];
+    logic [$clog2(`ISSUE_WIDTH)-1:0] forwardA_slot [`ISSUE_WIDTH-1:0];
+    logic [1:0] forwardB_stage [`ISSUE_WIDTH-1:0];
+    logic [$clog2(`ISSUE_WIDTH)-1:0] forwardB_slot [`ISSUE_WIDTH-1:0];
+
 ////////////////////////////////////////////////////
 ////                                              //
 ////                  Monitor                     //
@@ -426,14 +432,29 @@ module pipeline (
 ////                                              //
 ////////////////////////////////////////////////////
 
+//     ex_stage U_EX (
+//         .clk            (clk),
+//         .rst            (rst),
+// //        .id_ex_in       (id_ex_packet),
+//         .id_ex_in       (id_ex_forward_packet),
+//         .ex_mem_out     (ex_packet),
+//         .branch_taken   (branch_take),
+//         .branch_target  (branch_target)
+//     );
+
     ex_stage U_EX (
         .clk            (clk),
         .rst            (rst),
-//        .id_ex_in       (id_ex_packet),
         .id_ex_in       (id_ex_forward_packet),
         .ex_mem_out     (ex_packet),
         .branch_taken   (branch_take),
-        .branch_target  (branch_target)
+        .branch_target  (branch_target),
+        .forwardA_stage (forwardA_stage),
+        .forwardA_slot  (forwardA_slot),
+        .forwardB_stage (forwardB_stage),
+        .forwardB_slot  (forwardB_slot),
+        .ex_mem_forward (ex_mem_packet),   // Forwarding data from EX/MEM
+        .mem_wb_forward (mem_wb_packet)    // Forwarding data from MEM/WB
     );
 
 ////////////////////////////////////////////////////
@@ -536,16 +557,15 @@ module pipeline (
 //        .stall      (stall_signal)  // Combine with other stall sources
 //    );
 
-//    // ---- forwarding unit ----
-//    forwarding_unit U_FU (
-//        .id_ex_q        (id_ex_q),
-//        .ex_mem_q       (ex_mem_q),
-//        .mem_wb_q       (mem_wb_q),
-//        .forwardA_stage (forwardA_stage),
-//        .forwardA_slot  (forwardA_slot),
-//        .forwardB_stage (forwardB_stage),
-//        .forwardB_slot  (forwardB_slot)
-//    );
+    forwarding_unit U_FU (
+        .id_ex_q        (id_ex_forward_packet),
+        .ex_mem_q       (ex_mem_packet),
+        .mem_wb_q       (mem_wb_packet),
+        .forwardA_stage (forwardA_stage),
+        .forwardA_slot  (forwardA_slot),
+        .forwardB_stage (forwardB_stage),
+        .forwardB_slot  (forwardB_slot)
+    );
 
     // ---------------------------------------------------------
     // Global stall / flush

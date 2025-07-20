@@ -218,6 +218,22 @@ module pipeline (
         end
     end
 
+// Branch predictor module
+
+    logic bp_prediction;        // Prediction (taken/not taken)
+    logic [31:0] bp_target;     // Predicted target address
+
+    // Instantiate branch predictor
+    branch_predictor bp (
+        .clk(clk),
+        .reset(rst),
+        .pc(if_packet.PC[0]),
+        .instruction(if_packet.inst[0]),
+        .branch_taken_actual(bp_actual_taken),  // From EX stage
+        .is_branch_actual(bp_update),           // From EX stage
+        .prediction(bp_prediction),
+        .new_PC(bp_target)
+    );
 
 ////////////////////////////////////////////////////
 ////                                              //
@@ -230,6 +246,8 @@ module pipeline (
         .stall               (stall),
         .flush               (flush),
         .new_PC              (branch_target),
+        .bp_prediction       (bp_prediction),  // Added input
+        .bp_target           (bp_target),      // Added input
         .proc2Icache_command(proc2Icache_command),
         .proc2Icache_addr    (proc2Icache_addr),
         .mem2Icache_response(mem2Icache_response),
@@ -454,7 +472,11 @@ module pipeline (
         .forwardB_stage (forwardB_stage),
         .forwardB_slot  (forwardB_slot),
         .ex_mem_forward (ex_mem_packet),   // Forwarding data from EX/MEM
-        .mem_wb_forward (mem_wb_packet)    // Forwarding data from MEM/WB
+        .mem_wb_forward (mem_wb_packet),   // Forwarding data from MEM/WB
+        .bp_update(bp_update),
+        .bp_actual_taken(bp_actual_taken),
+        .bp_actual_target(bp_actual_target),
+        .bp_inst_pc(bp_inst_pc)
     );
 
 ////////////////////////////////////////////////////
@@ -570,8 +592,11 @@ module pipeline (
     // ---------------------------------------------------------
     // Global stall / flush
     // ---------------------------------------------------------
-    assign flush = branch_take;
-    assign stall = sb_stall | in_lane_stall;   // + other sources (e.g., cache miss)
+    // In pipeline.sv
+    assign flush = branch_take;  // From EX stage
+
+    // Stall logic should account for flushes
+    assign stall = sb_stall | in_lane_stall | (flush & ~branch_take);  // + other sources (e.g., cache miss)
 //    assign stall = sb_stall | any_valid(stall_signal);
 
 endmodule

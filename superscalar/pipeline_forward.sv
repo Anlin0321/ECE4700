@@ -1,6 +1,6 @@
 /////////////////////////////////////////////////////////////////////////
 //                                                                     //
-//   Modulename :  pipeline.v                                          //
+//   Modulename :  pipeline_forward.v                                  //
 //                                                                     //
 //  Description :  Top-level module of the verisimple pipeline;        //
 //                 This instantiates and connects the 5 stages of the  //
@@ -9,14 +9,14 @@
 //                                                                     //
 /////////////////////////////////////////////////////////////////////////
 
-`ifndef __PIPELINE_V__
-`define __PIPELINE_V__
+`ifndef __PIPELINE_FORWARD_V__
+`define __PIPELINE_FORWARD_V__
 
 `timescale 1ns/100ps
 
 `include "sys_defs.svh"
 
-module pipeline (
+module pipeline_forward (
     input  logic clk, rst,
     // ---- I-cache (superscalar) ----
     output logic [`ISSUE_WIDTH-1:0] [1:0]   proc2Icache_command, 
@@ -45,9 +45,7 @@ module pipeline (
     // Stage registers (now ISSUE_WIDTH arrays)
     // ---------------------------------------------------------
     IF_ID_PACKET   if_packet, if_id_packet;
-//    ID_EX_PACKET   id_packet, id_ex_packet, id_ex_forward_packet, id_ex_stall_packet;
     ID_EX_PACKET   id_packet, id_ex_forward_packet, id_ex_stall_packet;
-//    ID_EX_PACKET   id_stall_packet, id_forward_packet, id_ex_forward_packet, id_ex_stall_packet;
     EX_MEM_PACKET  ex_packet, ex_mem_packet;
     MEM_WB_PACKET  mem_packet, mem_wb_packet;
     
@@ -75,6 +73,12 @@ module pipeline (
     logic if_id_enable;
     logic id_ex_enable;
     logic ex_mem_enable;
+    
+    logic use_data_forwarding;
+    assign use_data_forwarding = 1'b1;
+
+    logic between_lane_stall; // stall for between-lane hazards
+    logic intra_lane_stall; // stall for intra-lane hazards
 
     logic [`ISSUE_WIDTH-1:0]  id_kills;
     logic [`ISSUE_WIDTH-1:0]  id_forwards;
@@ -101,6 +105,12 @@ module pipeline (
 	                                mem_wb_halt                ? HALTED_ON_WFI :
 	                                // (mem2proc_response==4'h0)  ? LOAD_ACCESS_FAULT :
 	                                NO_ERROR;
+
+    // Forwarding unit outputs
+    logic [1:0] forwardA_stage [`ISSUE_WIDTH-1:0];
+    logic [$clog2(`ISSUE_WIDTH)-1:0] forwardA_slot [`ISSUE_WIDTH-1:0];
+    logic [1:0] forwardB_stage [`ISSUE_WIDTH-1:0];
+    logic [$clog2(`ISSUE_WIDTH)-1:0] forwardB_slot [`ISSUE_WIDTH-1:0];
 
 ////////////////////////////////////////////////////
 ////                                              //
@@ -292,7 +302,6 @@ module pipeline (
 ////                  ID-Stage                    //
 ////                                              //
 ////////////////////////////////////////////////////
-    logic in_lane_stall; // stall for intra-lane hazards
     id_stage U_ID (
         .clk         (clk),
         .rst         (rst),
@@ -328,7 +337,7 @@ module pipeline (
 //	assign id_ex_valid_inst = id_ex_packet.valid;
 
 	assign id_ex_enable = 1'b1; // always enabled
-	assign in_lane_stall = any_valid_packed(id_kills);
+	assign intra_lane_stall = any_valid_packed(id_kills);
 
     always_ff @(posedge clk) begin
         if (rst)
@@ -341,24 +350,6 @@ module pipeline (
 	always_ff @(posedge clk) begin
 		if (rst) begin
 		    for (int i = 0; i < `ISSUE_WIDTH; i++) begin
-//                id_ex_packet.NPC[i]           <= {`XLEN{1'b0}};
-//                id_ex_packet.PC[i]            <= {`XLEN{1'b0}};
-//                id_ex_packet.rs1_value[i]     <= {`XLEN{1'b0}};
-//                id_ex_packet.rs2_value[i]     <= {`XLEN{1'b0}};
-//                id_ex_packet.opa_select[i]    <= OPA_IS_RS1;  // Default to using RS1
-//                id_ex_packet.opb_select[i]    <= OPB_IS_RS2;  // Default to using RS2
-//                id_ex_packet.inst[i]         <= `NOP;        // Insert NOP instructions
-//                id_ex_packet.dest_reg_idx[i]  <= `ZERO_REG;   // Default to zero register
-//                id_ex_packet.alu_func[i]      <= ALU_ADD;     // Default to ADD operation
-//                id_ex_packet.rd_mem[i]       <= 1'b0;        // No memory read
-//                id_ex_packet.wr_mem[i]       <= 1'b0;        // No memory write
-//                id_ex_packet.cond_branch[i]  <= 1'b0;        // No conditional branch
-//                id_ex_packet.uncond_branch[i] <= 1'b0;        // No unconditional branch
-//                id_ex_packet.halt[i]         <= 1'b0;        // Not halted
-//                id_ex_packet.illegal[i]      <= 1'b0;        // Legal instruction
-//                id_ex_packet.csr_op[i]       <= 1'b0;        // No CSR operation
-//                id_ex_packet.valid[i]        <= 1'b0;        // Invalid instruction
-
                 id_ex_forward_packet.NPC[i]           <= {`XLEN{1'b0}};
                 id_ex_forward_packet.PC[i]            <= {`XLEN{1'b0}};
                 id_ex_forward_packet.rs1_value[i]     <= {`XLEN{1'b0}};
@@ -399,13 +390,11 @@ module pipeline (
                 id_ex_stall_packet.csr_op[i]       <= 1'b0;        // No CSR operation
                 id_ex_stall_packet.valid[i]        <= 1'b0;        // Invalid instruction
 			end
-        end else if (sb_stall) begin
-//            id_ex_stall_packet <= `SD id_stall_packet;
+        end else if (between_lane_stall) begin
             id_ex_stall_packet <= `SD id_packet;
 
             for (int i = 0; i < `ISSUE_WIDTH; i++) begin
                 id_ex_forward_packet.valid[i] <= `SD 1'b0;
-//                id_ex_stall_packet.valid[i]   <= `SD id_forward_packet.valid[i]; 
             end
 
 		end else begin // if (reset)
@@ -426,14 +415,29 @@ module pipeline (
 ////                                              //
 ////////////////////////////////////////////////////
 
-    ex_stage U_EX (
+//     ex_stage U_EX (
+//         .clk            (clk),
+//         .rst            (rst),
+// //        .id_ex_in       (id_ex_packet),
+//         .id_ex_in       (id_ex_forward_packet),
+//         .ex_mem_out     (ex_packet),
+//         .branch_taken   (branch_take),
+//         .branch_target  (branch_target)
+//     );
+
+    ex_stage_with_forward U_EX (
         .clk            (clk),
         .rst            (rst),
-//        .id_ex_in       (id_ex_packet),
         .id_ex_in       (id_ex_forward_packet),
         .ex_mem_out     (ex_packet),
         .branch_taken   (branch_take),
-        .branch_target  (branch_target)
+        .branch_target  (branch_target),
+        .forwardA_stage (forwardA_stage),
+        .forwardA_slot  (forwardA_slot),
+        .forwardB_stage (forwardB_stage),
+        .forwardB_slot  (forwardB_slot),
+        .ex_mem_forward (ex_mem_packet),   // Forwarding data from EX/MEM
+        .mem_wb_forward (mem_wb_packet)    // Forwarding data from MEM/WB
     );
 
 ////////////////////////////////////////////////////
@@ -536,23 +540,22 @@ module pipeline (
 //        .stall      (stall_signal)  // Combine with other stall sources
 //    );
 
-//    // ---- forwarding unit ----
-//    forwarding_unit U_FU (
-//        .id_ex_q        (id_ex_q),
-//        .ex_mem_q       (ex_mem_q),
-//        .mem_wb_q       (mem_wb_q),
-//        .forwardA_stage (forwardA_stage),
-//        .forwardA_slot  (forwardA_slot),
-//        .forwardB_stage (forwardB_stage),
-//        .forwardB_slot  (forwardB_slot)
-//    );
+    forwarding_unit U_FU (
+        .id_ex_q        (id_ex_forward_packet),
+        .ex_mem_q       (ex_mem_packet),
+        .mem_wb_q       (mem_wb_packet),
+        .forwardA_stage (forwardA_stage),
+        .forwardA_slot  (forwardA_slot),
+        .forwardB_stage (forwardB_stage),
+        .forwardB_slot  (forwardB_slot)
+    );
 
     // ---------------------------------------------------------
     // Global stall / flush
     // ---------------------------------------------------------
     assign flush = branch_take;
-    assign stall = sb_stall | in_lane_stall;   // + other sources (e.g., cache miss)
-//    assign stall = sb_stall | any_valid(stall_signal);
+    assign between_lane_stall = use_data_forwarding ? 1'b0 : sb_stall;
+    assign stall = between_lane_stall | intra_lane_stall;   // + other sources (e.g., cache miss)
 
 endmodule
 

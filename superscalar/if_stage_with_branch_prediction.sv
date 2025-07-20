@@ -13,13 +13,17 @@
 
 `include "sys_defs.svh"
 
-
-module if_stage (
+// 先做always take
+// 再decode instruction, decode offset then jump
+// ex stage calculate target, packet add branch take or not. 成败
+module if_stage_with_branch_prediction (
     input  logic                          clk, rst,
     // ---- pipeline control ----
     input  logic                          stall,
     input  logic                          flush,
     input  XLEN_t                         new_PC,        // redirected PC on branch
+    input  logic                          bp_prediction,  // Prediction signal (taken/not taken)
+    input  XLEN_t                         bp_target,      // Predicted target address
     // ---- I-cache interface (superscalar) ----
     output logic [`ISSUE_WIDTH-1:0] [1:0]         proc2Icache_command, 
 //    output XLEN_t [`ISSUE_WIDTH-1:0]      proc2Icache_addr,
@@ -46,10 +50,16 @@ module if_stage (
 
     // next PC logic
     always_comb begin
-        if (flush) 
-            PC_n = new_PC;                   // branch redirection
-        else 
-            PC_n = PC_q + 4*`ISSUE_WIDTH;    // advance by ISSUE_WIDTH instructions
+    if (flush) begin
+            // Misprediction recovery - highest priority
+            PC_n = new_PC;  
+        end else if (bp_prediction) begin
+            // Predicted branch
+            PC_n = bp_target;
+        end else begin
+            // Sequential flow
+            PC_n = PC_q + 4*`ISSUE_WIDTH;
+        end
     end
 
     // ---- I-cache requests ----

@@ -246,7 +246,7 @@ typedef union packed {
 //--------------------------------------------------------------
 // -- Superscalar parameters
 //--------------------------------------------------------------
-`define ISSUE_WIDTH  3           // 3-way in-order issue
+`define ISSUE_WIDTH  8
 `define IW_RANGE     (`ISSUE_WIDTH-1):0
 `define PC_RESET     32'h0000_0000
 

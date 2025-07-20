@@ -58,6 +58,7 @@ module testbench;
 
     // Instantiate the Pipeline
     pipeline core(
+//    pipeline_forward core(
         // Inputs
         .clk                (clock),
         .rst                (reset),
@@ -134,8 +135,8 @@ module testbench;
     // Simulate memory
 //    string program_name = "program.mem";
 //    string program_name = "no_hazard.mem";
-//    string program_name = "testbench1.mem";
-    string program_name = "testbench2.mem";
+    string program_name = "testbench1.mem";
+//    string program_name = "testbench2.mem";
 
     task automatic load_program;
         $readmemh(program_name, mem.instr_memory);

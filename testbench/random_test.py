@@ -86,6 +86,8 @@ def disasm(enc: int) -> str:
         imm = ((enc>>31)&1)<<20 | ((enc>>12)&0xff)<<12 | ((enc>>20)&1)<<11 | ((enc>>21)&0x3ff)<<1
         if imm & 0x100000: imm -= 0x200000
         return f"jal  x{rd}, {imm}"
+    if opcode == 0x73:  # SYSTEM
+        return "wfi"
     return "unknown"
 
 # ----------------------------------
@@ -97,6 +99,8 @@ ALU_R   : List[Tuple[str, int, int]] = [("add",0x0,0x00), ("sub",0x0,0x20),
 ALU_I   : List[Tuple[str, int]]      = [("addi",0x0), ("andi",0x7),
                                         ("ori",0x6),  ("xori",0x4)]
 BR      : List[Tuple[str, int]]      = [("beq",0x0), ("bne",0x1)]
+
+WFI = 0x10500073
 
 REGS = list(range(1, 32))       # x0 is constant, avoid as dest
 SPREG = 2                        # x2 (stack pointer) – handy non-zero base
@@ -122,8 +126,8 @@ def generate(n=100, hazard_p=0.2, branch_p=0.1, taken_p=0.5, seed=0):
             # use BEQ/BNE comparing two regs, maybe self-dependence for predictability
             rs1 = last_def if make_hazard else rand_reg()
             rs2 = rs1 if random.random() < taken_p else rand_reg(exclude=(rs1,))
-            taken = rs1 == rs2
-            offset = 4 if not taken else -4   # trivial loop / skip
+            # taken = rs1 == rs2
+            offset = 4  #  if not taken else -4   # trivial loop / skip
             mnem, f3 = random.choice(BR)
             if mnem == "beq": f3 = 0x0
             enc = encode_B(offset, rs2, rs1, f3)
@@ -132,8 +136,10 @@ def generate(n=100, hazard_p=0.2, branch_p=0.1, taken_p=0.5, seed=0):
             if make_hazard:
                 rs1 = last_def
             else:
+                # FIXME: should we exclude last_def?
                 rs1 = rand_reg()
             op_kind = random.choice(["R","I","LW","SW"])
+            # op_kind = random.choice(["R","I"])
             if op_kind == "R":
                 mnem,f3,f7 = random.choice(ALU_R)
                 rs2 = rand_reg(exclude=(rs1,))
@@ -160,6 +166,7 @@ def generate(n=100, hazard_p=0.2, branch_p=0.1, taken_p=0.5, seed=0):
         code.append(enc)
         pc += 4
 
+    code.append(WFI)
     return code
 
 # ----------------------------------
@@ -168,10 +175,12 @@ def generate(n=100, hazard_p=0.2, branch_p=0.1, taken_p=0.5, seed=0):
 def write_stream(code: List[int], stem: str):
     stem = pathlib.Path(stem)
     with open(stem.with_suffix(".hex"), "w") as fh_hex, \
-         open(stem.with_suffix(".asm"), "w") as fh_asm:
+         open(stem.with_suffix(".asm"), "w") as fh_asm, \
+         open(stem.with_suffix(".s"), "w") as fh_s:
         for pc, enc in enumerate(code):
             fh_hex.write(f"{enc:08x}\n")
             fh_asm.write(f"{pc*4:08x}: {enc:08x}    {disasm(enc)}\n")
+            fh_s.write(f"{disasm(enc)}\n")
 
 # ----------  Config handling  ------------------------------------------------
 def parse_cli():
@@ -188,7 +197,7 @@ def parse_cli():
     ap.add_argument("-o", "--out",     type=str,   help="output file stem")
     return ap.parse_args()
 
-DEFAULTS = dict(len=100, hazard=0.2, branch=0.1, taken=0.5, seed=0, dir="./testbenchs", out="test")
+DEFAULTS = dict(len=100, hazard=0.2, branch=0.1, taken=0.5, seed=0, dir="./testbenches", out="test")
 
 def merge_cfg(cli, yaml_cfg):
     cfg = DEFAULTS | yaml_cfg          # start with YAML values overriding defaults

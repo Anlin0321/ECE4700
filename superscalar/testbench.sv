@@ -57,7 +57,7 @@ module testbench;
 	EXCEPTION_CODE   pipeline_error_status;
 
     // Instantiate the Pipeline
-    pipeline core(
+    pipeline_bp core(
 //    pipeline_forward core(
         // Inputs
         .clk                (clock),

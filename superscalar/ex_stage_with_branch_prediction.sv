@@ -16,6 +16,7 @@
 `timescale 1ns/100ps
 
 `include "sys_defs.svh"
+//`include "ISA.svh"
 
 //
 // The ALU
@@ -103,30 +104,25 @@ module ex_stage_with_branch_prediction
     input  logic          clk, rst,
 
     // ---- ID/EX input ----
-    input  ID_EX_PACKET   id_ex_in,
+    input  ID_EX_PACKET_BP   id_ex_in,
 
     // ---- EX/MEM output ----
-    output EX_MEM_PACKET  ex_mem_out,
+    output EX_MEM_PACKET_BP  ex_mem_out,
 
     // ---- branch feedback ----
     output logic          branch_taken,
+    output [`XLEN-1:0] update_pc,
     output XLEN_t         branch_target,
+    input int             branchWayP,
 
     // ---- Forwarding inputs ----
     input  logic [1:0]    forwardA_stage [`ISSUE_WIDTH-1:0],
     input  logic [$clog2(`ISSUE_WIDTH)-1:0] forwardA_slot [`ISSUE_WIDTH-1:0],
     input  logic [1:0]    forwardB_stage [`ISSUE_WIDTH-1:0],
     input  logic [$clog2(`ISSUE_WIDTH)-1:0] forwardB_slot [`ISSUE_WIDTH-1:0],
-    input  EX_MEM_PACKET  ex_mem_forward,   // Forwarding data from EX/MEM
-    input  MEM_WB_PACKET  mem_wb_forward,   // Forwarding data from MEM/WB
-
-    // ---- Branch Predictor Interface ----
-    output logic          bp_update,        // Predictor update trigger
-    output logic          bp_actual_taken,  // Actual branch outcome
-    output XLEN_t         bp_actual_target, // Actual target address
-    output XLEN_t         bp_inst_pc        // PC of branch instruction
+    input  EX_MEM_PACKET_BP  ex_mem_forward,   // Forwarding data from EX/MEM
+    input  MEM_WB_PACKET  mem_wb_forward    // Forwarding data from MEM/WB
 );
-
     // Internal signals for each way
     genvar w;
     generate
@@ -166,7 +162,8 @@ module ex_stage_with_branch_prediction
             always_comb begin
                 opa_mux_out = `XLEN'hdeadfbac;  // Default for simulation debug
                 case (id_ex_in.opa_select[w])
-                    OPA_IS_RS1:  opa_mux_out = rs1_value_forwarded;
+                    // OPA_IS_RS1:  opa_mux_out = id_ex_in.rs1_value[w];
+                   OPA_IS_RS1:  opa_mux_out = rs1_value_forwarded;
                     OPA_IS_NPC:  opa_mux_out = id_ex_in.NPC[w];
                     OPA_IS_PC:   opa_mux_out = id_ex_in.PC[w];
                     OPA_IS_ZERO: opa_mux_out = 0;
@@ -177,7 +174,8 @@ module ex_stage_with_branch_prediction
             always_comb begin
                 opb_mux_out = `XLEN'hfacefeed;  // Default for simulation debug
                 case (id_ex_in.opb_select[w])
-                    OPB_IS_RS2:   opb_mux_out = rs2_value_forwarded;
+                    // OPB_IS_RS2:   opb_mux_out = id_ex_in.rs2_value[w];
+                   OPB_IS_RS2:   opb_mux_out = rs2_value_forwarded;
                     OPB_IS_I_IMM: opb_mux_out = `RV32_signext_Iimm(id_ex_in.inst[w]);
                     OPB_IS_S_IMM: opb_mux_out = `RV32_signext_Simm(id_ex_in.inst[w]);
                     OPB_IS_B_IMM: opb_mux_out = `RV32_signext_Bimm(id_ex_in.inst[w]);
@@ -196,8 +194,8 @@ module ex_stage_with_branch_prediction
 
             // Branch condition checker
             brcond brcond_inst (
-                .rs1(id_ex_in.rs1_value[w]),  
-                .rs2(id_ex_in.rs2_value[w]),  
+                .rs1(id_ex_in.rs1_value[w]),
+                .rs2(id_ex_in.rs2_value[w]),
                 .func(id_ex_in.inst[w].b.funct3),
                 .cond(brcond_result)
             );
@@ -206,11 +204,6 @@ module ex_stage_with_branch_prediction
             assign take_branch = id_ex_in.uncond_branch[w] | 
                                 (id_ex_in.cond_branch[w] & brcond_result);
             assign ex_mem_out.take_branch[w] = take_branch;
-
-            // Calculate branch target (with JALR handling)
-            assign branch_target_internal = 
-                is_jalr ? {ex_mem_out.alu_result[w][`XLEN-1:1], 1'b0} :
-                id_ex_in.PC[w] + `RV32_signext_Bimm(id_ex_in.inst[w]);
 
             // Pass-through signals
             assign ex_mem_out.NPC[w]           = id_ex_in.NPC[w];
@@ -223,40 +216,40 @@ module ex_stage_with_branch_prediction
             assign ex_mem_out.illegal[w]       = id_ex_in.illegal[w];
             assign ex_mem_out.csr_op[w]        = id_ex_in.csr_op[w];
             assign ex_mem_out.valid[w]         = id_ex_in.valid[w];  // FIXME: squash instr after branch taken
+            // --- Final step: Pass through the branch predictor metadata ---
+            assign ex_mem_out.provider_component[w] = id_ex_in.provider_component[w];
+            assign ex_mem_out.indices[w]            = id_ex_in.indices[w];
+            assign ex_mem_out.ghist_snapshot[w]     = id_ex_in.ghist_snapshot[w];
         end
     endgenerate
 
-    // Branch feedback and predictor update logic
+    // Branch feedback logic
     logic found_target;
+    logic update_pc;
     always_comb begin
         branch_taken = 1'b0;
         branch_target = `XLEN'h0;
-        bp_update = 1'b0;
-        bp_actual_taken = 1'b0;
-        bp_actual_target = `XLEN'h0;
-        bp_inst_pc = `XLEN'h0;
         found_target = 1'b0;
         
-        // Process instructions in-order, stopping at first branch
         for (int w = 0; w < `ISSUE_WIDTH; w++) begin
-            if (!found_target && id_ex_in.valid[w] && 
-               (id_ex_in.cond_branch[w] || id_ex_in.uncond_branch[w])) begin
+            if (!found_target && ex_mem_out.valid[w] && ex_mem_out.take_branch[w]) begin
+                // branch_taken = 1'b1;
                 
-                branch_taken = ex_mem_out.take_branch[w];
-                branch_target = (id_ex_in.inst[w][6:0] == `RV32_JALR_OP) ? 
-                              {ex_mem_out.alu_result[w][`XLEN-1:1], 1'b0} :
-                              id_ex_in.PC[w] + `RV32_signext_Bimm(id_ex_in.inst[w]);
-
-                // Predictor update signals
-                bp_update = 1'b1;
-                bp_actual_taken = branch_taken;
-                bp_actual_target = branch_target;
-                bp_inst_pc = id_ex_in.PC[w];
-                
+                // Handle JALR special case (clear LSB of target)
+                if (id_ex_in.inst[w][6:0] == `RV32_JALR_OP) 
+                    branch_target = {ex_mem_out.alu_result[w][`XLEN-1:1], 1'b0};
+                else
+                    branch_target = ex_mem_out.alu_result[w];
+                    
+                if (branchWayP != w) begin
+                    branch_taken = 1'b1;
+                    update_pc = id_ex_in.PC[w];
+                end
                 found_target = 1'b1;
             end
         end
     end
+
 endmodule
 
 //module ex_stage(

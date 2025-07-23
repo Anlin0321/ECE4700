@@ -271,6 +271,78 @@ typedef logic [`XLEN-1:0] XLEN_t;
 //	logic [`XLEN-1:0] PC;  // PC 
 //} IF_ID_PACKET;
 
+localparam TABLE_SIZE  = 2048;
+localparam NUM_TABLES  = 7;
+localparam GHIST_WIDTH = 256;
+
+// A helper typedef for the packed indices metadata to keep structs clean
+typedef logic [($clog2(TABLE_SIZE) * NUM_TABLES) - 1:0] bp_indices_t;
+
+
+// --- IF/ID Packet ---
+// Carries fetched instructions from IF to ID.
+typedef struct {
+    INST                inst  [`IW_RANGE];
+    XLEN_t              NPC   [`IW_RANGE];
+    XLEN_t              PC    [`IW_RANGE];
+    logic               valid [`IW_RANGE];
+
+    // Branch Predictor Metadata
+    logic [2:0]                 provider_component [`IW_RANGE];
+    logic [$bits(bp_indices_t)-1:0] indices [`IW_RANGE];
+    logic [GHIST_WIDTH-1:0]     ghist_snapshot [`IW_RANGE];
+} IF_ID_PACKET_BP;
+
+typedef struct {
+    XLEN_t              NPC [`IW_RANGE];
+    XLEN_t              PC [`IW_RANGE];
+    XLEN_t              rs1_value [`IW_RANGE];
+    XLEN_t              rs2_value [`IW_RANGE];
+    logic [4:0]         rs1_idx [`IW_RANGE];
+    logic [4:0]         rs2_idx [`IW_RANGE];
+    ALU_OPA_SELECT      opa_select [`IW_RANGE];
+    ALU_OPB_SELECT      opb_select [`IW_RANGE];
+    INST                inst  [`IW_RANGE];
+    logic [4:0]         dest_reg_idx [`IW_RANGE];
+    ALU_FUNC            alu_func [`IW_RANGE];
+    logic               rd_mem [`IW_RANGE];
+    logic               wr_mem [`IW_RANGE];
+    logic               cond_branch [`IW_RANGE];
+    logic               uncond_branch [`IW_RANGE];
+    logic               halt [`IW_RANGE];
+    logic               illegal [`IW_RANGE];
+    logic               csr_op [`IW_RANGE];
+    logic               valid [`IW_RANGE];
+
+    // Branch Predictor Metadata
+    logic [2:0]                 provider_component [`IW_RANGE];
+    logic [$bits(bp_indices_t)-1:0] indices [`IW_RANGE];
+    logic [GHIST_WIDTH-1:0]     ghist_snapshot [`IW_RANGE];
+} ID_EX_PACKET_BP;
+
+typedef struct {
+    XLEN_t              alu_result [`IW_RANGE];
+    XLEN_t              NPC        [`IW_RANGE];
+    XLEN_t              PC         [`IW_RANGE];
+    logic               take_branch [`IW_RANGE];
+    XLEN_t              rs2_value  [`IW_RANGE];
+    logic               rd_mem     [`IW_RANGE];
+    logic               wr_mem     [`IW_RANGE];
+    logic [4:0]         dest_reg_idx [`IW_RANGE];
+    logic               halt       [`IW_RANGE];
+    logic               illegal    [`IW_RANGE];
+    logic               csr_op     [`IW_RANGE];
+    logic               valid      [`IW_RANGE];
+    logic [2:0]         mem_size   [`IW_RANGE];
+    logic               cond_branch [`IW_RANGE];
+
+    // Branch Predictor Metadata
+    logic [2:0]                 provider_component [`IW_RANGE];
+    logic [$bits(bp_indices_t)-1:0] indices [`IW_RANGE];
+    logic [GHIST_WIDTH-1:0]     ghist_snapshot [`IW_RANGE];
+} EX_MEM_PACKET_BP;
+
+
 typedef struct {
     logic               valid [`IW_RANGE];
 //    logic [31:0]        inst  [`IW_RANGE];

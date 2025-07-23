@@ -44,9 +44,9 @@ module pipeline_bp (
     // ---------------------------------------------------------
     // Stage registers (now ISSUE_WIDTH arrays)
     // ---------------------------------------------------------
-    IF_ID_PACKET   if_packet, if_id_packet;
-    ID_EX_PACKET   id_packet, id_ex_forward_packet, id_ex_stall_packet;
-    EX_MEM_PACKET  ex_packet, ex_mem_packet;
+    IF_ID_PACKET_BP   if_packet, if_id_packet;
+    ID_EX_PACKET_BP   id_packet, id_ex_forward_packet, id_ex_stall_packet;
+    EX_MEM_PACKET_BP  ex_packet, ex_mem_packet;
     MEM_WB_PACKET  mem_packet, mem_wb_packet;
     
     // stall register (for id stage)
@@ -118,7 +118,7 @@ module pipeline_bp (
 ////                                              //
 ////////////////////////////////////////////////////
 
-    function automatic void print_if_id_packet(input IF_ID_PACKET pkt);
+    function automatic void print_if_id_packet(input IF_ID_PACKET_BP pkt);
         $display("IF_ID_PACKET:");
         for (int i = 0; i < `ISSUE_WIDTH; i++) begin
             $display("  Lane %0d:", i);
@@ -130,7 +130,7 @@ module pipeline_bp (
     endfunction
 
     // Helper function to print ID_EX_PACKET
-    function automatic void print_id_ex_packet(input ID_EX_PACKET pkt);
+    function automatic void print_id_ex_packet(input ID_EX_PACKET_BP pkt);
         $display("ID_EX_PACKET:");
         for (int i = 0; i < `ISSUE_WIDTH; i++) begin
             $display("  Lane %0d:", i);
@@ -153,7 +153,7 @@ module pipeline_bp (
     endfunction
 
     // Helper function to print EX_MEM_PACKET
-    function automatic void print_ex_mem_packet(input EX_MEM_PACKET pkt);
+    function automatic void print_ex_mem_packet(input EX_MEM_PACKET_BP pkt);
         $display("EX_MEM_PACKET:");
         for (int i = 0; i < `ISSUE_WIDTH; i++) begin
             $display("  Lane %0d:", i);
@@ -228,34 +228,49 @@ module pipeline_bp (
 ////                  IF-Stage                    //
 ////                                              //
 ////////////////////////////////////////////////////
-    // Branch predictor module
+    logic bp_prediction;
+    logic [31:0] bp_target = 0;
+    logic                       update_valid = 0;
+    logic [31:0]                update_pc = 0;
+    logic                       is_branch_actual = 0;
+    logic                       branch_taken_actual = 0;
+    logic [2:0]                 update_provider_component = 0;
+    localparam INDEX_WIDTH = $clog2(2048);
+    logic [(INDEX_WIDTH*7)-1:0] update_indices = 0;        // Assuming TAGE params
+    logic [255:0]               update_ghist_snapshot = 0;  // Assuming TAGE params
+    logic                       taken_branch_valid = 0; // Is there a predicted taken branch?
+    logic [$clog2(`ISSUE_WIDTH)-1:0] taken_branch_way = 0;
+    logic [31:0]                taken_branch_target_pc = 0; // Where does it go?
 
-    logic bp_prediction;        // Prediction (taken/not taken)
-    logic [31:0] bp_target;     // Predicted target address
-
-    // Instantiate branch predictor
-    branch_predictor bp (
+    branch_predictor BP(
         .clk(clk),
         .reset(rst),
-        .pc(if_packet.PC[0]),
-        .instruction(if_packet.inst[0]),
-        .branch_taken_actual(bp_actual_taken),  // From EX stage
-        .is_branch_actual(bp_update),           // From EX stage
-        .prediction(bp_prediction),
-        .new_PC(bp_target)
+        .flush(flush),
+        .stall(stall),
+        .new_PC(branch_target),
+        .mem2Icache_response(mem2Icache_response),
+        .mem2Icache_data(mem2Icache_data),
+        .mem2Icache_tag(mem2Icache_tag),
+        .update_valid(update_valid),
+        .update_pc(update_pc),
+        .is_branch_actual(is_branch_actual),
+        .branch_taken_actual(branch_taken_actual),
+        .update_provider_component(update_provider_component),
+        .update_indices(update_indices),
+        .update_ghist_snapshot(update_ghist_snapshot),
+        .taken_branch_valid(taken_branch_valid),
+        .taken_branch_way(taken_branch_way),
+        .taken_branch_target_pc(taken_branch_target_pc)
     );
 
-    if_stage U_IF (
+    if_stage_with_branch_prediction U_IF (
         .clk                 (clk),
         .rst                 (rst),
         .stall               (stall),
         .flush               (flush),
         .new_PC              (branch_target),
-        
-        // branch prediction
-        .bp_prediction       (bp_prediction),
-        .bp_target           (bp_target),
-
+        .bp_prediction       (taken_branch_valid),
+        .bp_target           (taken_branch_target_pc),
         .proc2Icache_command(proc2Icache_command),
         .proc2Icache_addr    (proc2Icache_addr),
         .mem2Icache_response(mem2Icache_response),
@@ -302,10 +317,12 @@ module pipeline_bp (
 ////////////////////////////////////////////////////
 
 	assign if_id_enable = 1'b1; // always enabled
+    assign bp_prediction = taken_branch_valid;
 //    assign if_id_enable = ~stall; // if stalled, we want if_id registers freeze
 	// synopsys sync_set_reset "reset"
+    
 	always_ff @(posedge clk) begin
-		if (rst) begin 
+        if (rst) begin 
 			for (int i = 0; i < `ISSUE_WIDTH; i++) begin
                 if_id_packet.valid[i] <= 1'b0;
                 if_id_packet.inst[i]  <= `NOP;
@@ -314,8 +331,8 @@ module pipeline_bp (
             end
 		end else begin// if (reset)
 			if (if_id_enable) begin
-				if_id_packet <= `SD if_packet; 
-			end // if (if_id_enable)	
+                if_id_packet <= `SD if_packet; 
+                end // if (if_id_enable)	
 		end
 	end // always
 
@@ -324,7 +341,7 @@ module pipeline_bp (
 ////                  ID-Stage                    //
 ////                                              //
 ////////////////////////////////////////////////////
-    id_stage U_ID (
+    id_stage_with_branch_prediction U_ID (
         .clk         (clk),
         .rst         (rst),
         .if_id_in    (if_id_packet),
@@ -391,6 +408,10 @@ module pipeline_bp (
                 id_ex_forward_packet.illegal[i]      <= 1'b0;        // Legal instruction
                 id_ex_forward_packet.csr_op[i]       <= 1'b0;        // No CSR operation
                 id_ex_forward_packet.valid[i]        <= 1'b0;        // Invalid instruction
+                id_ex_forward_packet.provider_component[i] = 0;
+                id_ex_forward_packet.indices[i] = 0;
+                id_ex_forward_packet.ghist_snapshot[i] = 0;
+
                 
                 id_ex_stall_packet.NPC[i]           <= {`XLEN{1'b0}};
                 id_ex_stall_packet.PC[i]            <= {`XLEN{1'b0}};
@@ -411,6 +432,9 @@ module pipeline_bp (
                 id_ex_stall_packet.illegal[i]      <= 1'b0;        // Legal instruction
                 id_ex_stall_packet.csr_op[i]       <= 1'b0;        // No CSR operation
                 id_ex_stall_packet.valid[i]        <= 1'b0;        // Invalid instruction
+                id_ex_stall_packet.provider_component[i] = 0;
+                id_ex_stall_packet.indices[i] = 0;
+                id_ex_stall_packet.ghist_snapshot[i] = 0;
 			end
         end else if (between_lane_stall) begin
             id_ex_stall_packet <= `SD id_packet;
@@ -421,11 +445,11 @@ module pipeline_bp (
 
 		end else begin // if (reset)
 			if (id_ex_enable) begin
-				id_ex_forward_packet <= `SD id_packet;
-				id_ex_stall_packet <= `SD id_packet;
-				for (int i = 0; i < `ISSUE_WIDTH; i++) begin
-                    id_ex_forward_packet.valid[i] <= `SD id_packet.valid[i] & id_forwards[i];
-                    id_ex_stall_packet.valid[i]   <= `SD id_packet.valid[i] & ~id_forwards[i]; 
+				id_ex_forward_packet <= id_packet;
+                id_ex_stall_packet <= id_packet;
+                for (int i = 0; i < `ISSUE_WIDTH; i++) begin
+                    id_ex_forward_packet.valid[i] <= id_packet.valid[i] & id_forwards[i];
+                    id_ex_stall_packet.valid[i] <= id_packet.valid[i] & ~id_forwards[i];
                 end
 			end // if
 		end // else: !if(reset)
@@ -447,25 +471,20 @@ module pipeline_bp (
 //         .branch_target  (branch_target)
 //     );
 
-    ex_stage_with_forward U_EX (
+    ex_stage_with_branch_prediction U_EX (
         .clk            (clk),
         .rst            (rst),
         .id_ex_in       (id_ex_forward_packet),
         .ex_mem_out     (ex_packet),
         .branch_taken   (branch_take),
+        .branchWayP(taken_branch_way),
         .branch_target  (branch_target),
         .forwardA_stage (forwardA_stage),
         .forwardA_slot  (forwardA_slot),
         .forwardB_stage (forwardB_stage),
         .forwardB_slot  (forwardB_slot),
-        .ex_mem_forward (ex_mem_packet),   // Forwarding data from EX/MEM        
-        .mem_wb_forward (mem_wb_packet),   // Forwarding data from MEM/WB
-        
-        // Branch prediction
-        .bp_update(bp_update),
-        .bp_actual_taken(bp_actual_taken),
-        .bp_actual_target(bp_actual_target),
-        .bp_inst_pc(bp_inst_pc)
+        .ex_mem_forward (ex_mem_packet),   // Forwarding data from EX/MEM
+        .mem_wb_forward (mem_wb_packet)    // Forwarding data from MEM/WB
     );
 
 ////////////////////////////////////////////////////
@@ -477,7 +496,47 @@ module pipeline_bp (
 //	assign ex_mem_NPC        = ex_mem_packet.NPC;
 //	assign ex_mem_valid_inst = ex_mem_packet.valid;
 
-	assign ex_mem_enable = 1'b1; // always enabled
+// logic                       is_branch_actual = 0;
+    // logic                       branch_taken_actual = 0;
+    // logic [2:0]                 update_provider_component = 0;
+    // logic [($clog2(2048)*7)-1:0] update_indices = 0;         // Assuming TAGE params
+    // logic [255:0]               update_ghist_snapshot = 0;  // Assuming TAGE params
+
+	always_comb begin
+        // Default values: No update by default
+        update_valid = 1'b0;
+        update_pc = 0;
+        is_branch_actual = 1'b0;
+        branch_taken_actual = 1'b0;
+
+        // Default metadata to 0
+        update_provider_component = 0;
+        update_indices = 0;
+        update_ghist_snapshot = 0;
+
+        // Find the first valid instruction in the ex_mem_packet that is a conditional branch.
+        // This gives priority to the earliest instruction in a superscalar group.
+        for (int i = 0; i < `ISSUE_WIDTH; i++) begin
+            // An update occurs if a valid instruction is a conditional branch.
+            // The 'cond_branch' flag must be pipelined from the ID stage.
+            if (ex_mem_packet.valid[i] && ex_mem_packet.cond_branch[i]) begin
+
+                // --- Driving the Core Update Signals ---
+                update_valid        = 1'b1; // An update is happening.
+                is_branch_actual    = 1'b1; // It was a conditional branch, so update history.
+                branch_taken_actual = ex_mem_packet.take_branch[i]; // The actual outcome from EX stage.
+                update_pc           = ex_mem_packet.PC[i];          // The PC of this branch.
+
+                // --- Driving the Pipelined Metadata Signals ---
+                // These assignments will only work AFTER you add the fields to the pipeline packets.
+                update_provider_component = ex_mem_packet.provider_component[i];
+                update_indices            = ex_mem_packet.indices[i];
+                update_ghist_snapshot     = ex_mem_packet.ghist_snapshot[i];
+
+                break; // Found the first branch, so stop searching.
+            end
+        end
+    end
 	// synopsys sync_set_reset "reset"
 	always_ff @(posedge clk) begin
 		if (rst) begin
@@ -501,7 +560,7 @@ module pipeline_bp (
 				// these are forwarded directly from ID/EX registers, only for debugging purposes
 //				ex_mem_IR     <= `SD id_ex_IR;
 				// EX outputs
-				ex_mem_packet <= `SD ex_packet;
+				ex_mem_packet <= ex_packet;
 			end // if
 		end // else: !if(reset)
 	end // always
@@ -512,7 +571,7 @@ module pipeline_bp (
 ////                                              //
 ////////////////////////////////////////////////////
 
-    mem_stage U_MEM (
+    mem_stage_with_branch_prediction U_MEM (
         .clk                (clk),
         .rst                (rst),
         .ex_mem_in          (ex_mem_packet),
@@ -568,7 +627,7 @@ module pipeline_bp (
 //        .stall      (stall_signal)  // Combine with other stall sources
 //    );
 
-    forwarding_unit U_FU (
+    forwarding_unit_with_branch_prediction U_FU (
         .id_ex_q        (id_ex_forward_packet),
         .ex_mem_q       (ex_mem_packet),
         .mem_wb_q       (mem_wb_packet),

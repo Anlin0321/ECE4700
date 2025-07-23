@@ -1,39 +1,87 @@
-module branch_predictor (
+// This is the top-level N-way branch predictor module.
+// It instantiates the TAGE predictor and finds the first predicted taken branch.
+`include "sys_defs.svh"
+`include "ISA.svh"
+
+module branch_predictor #(
+    parameter N = `ISSUE_WIDTH // Superscalar width, must match the instantiated predictor
+)(
     input wire clk,
     input wire reset,
-    input wire [31:0] pc,
-    input wire [31:0] instruction,
-    input wire branch_taken_actual,
-    input wire is_branch_actual,
-    output wire prediction,
-    output wire new_PC
+    input wire flush,
+    input wire stall,
+    input wire [31:0] new_PC,  // Added missing declaration
+
+    // N-way inputs from Fetch Stage
+    input  logic [`ISSUE_WIDTH-1:0] [3:0]          mem2Icache_response,
+    input  logic [`ISSUE_WIDTH-1:0] [63:0]         mem2Icache_data,
+    input  logic [`ISSUE_WIDTH-1:0] [3:0]          mem2Icache_tag,
+
+    // Update interface (passed through to the TAGE module)
+    input wire                       update_valid,
+    input wire [31:0]                update_pc,
+    input wire                       is_branch_actual,
+    input wire                       branch_taken_actual,
+    input wire [2:0]                 update_provider_component,
+    input wire [($clog2(2048)*7)-1:0] update_indices,         // Assuming TAGE params
+    input wire [255:0]               update_ghist_snapshot,  // Assuming TAGE params
+
+    // --- Outputs to Fetch Stage ---
+    output reg                       taken_branch_valid, // Is there a predicted taken branch?
+    output reg [$clog2(`ISSUE_WIDTH)-1:0]       taken_branch_way,   // Which way is the first taken branch?
+    output reg [31:0]                taken_branch_target_pc // Where does it go?
 );
 
-    // Instruction type decoding
-    wire [6:0] opcode = instruction[6:0];
-    wire is_branch_inst = (opcode == 7'b1100011); 
-    wire is_jal_inst = (opcode == 7'b1101111);
-    wire is_jalr_inst = (opcode == 7'b1100111);
+    // --- Wires for connecting to the TAGE predictor ---
+    wire [`ISSUE_WIDTH-1:0] prediction;
+    wire [`ISSUE_WIDTH-1:0] is_branch;
+    wire [`ISSUE_WIDTH-1:0] is_unconditional;
+    logic [31:0] proc2Icache_addr [0:`ISSUE_WIDTH-1];   // I-cache request addresses
+    logic [31:0] PC_q;                       // current PC register
+    logic [31:0] PC_n;                       // next PC value
+    logic PC_enable;
+    logic [31:0] instruction [`ISSUE_WIDTH-1:0];
+    logic [31:0] taken_branch_target_pc;
+    logic [31:0] pc [`ISSUE_WIDTH-1:0];
 
-    // Immediate field extraction (similar to decoder module)
-    wire [31:0] jal_imm = {{12{instruction[31]}}, instruction[19:12], instruction[20], instruction[30:21], 1'b0};
-    wire [31:0] branch_imm = {{20{instruction[31]}}, instruction[7], instruction[30:25], instruction[11:8], 1'b0};
-    wire [31:0] jalr_imm = {{20{instruction[31]}}, instruction[31:20]};
-    
-    // Calculate target addresses
-    wire [31:0] jal_target = pc + jal_imm;
-    wire [31:0] branch_target = pc + branch_imm;
-    wire [31:0] jalr_target_base = (pc + jalr_imm) & ~32'h1; // Clear LSB for alignment
-    
-    // Unconditional branches always taken
-    wire unconditional_taken = is_jal_inst | is_jalr_inst;
-    
-    // TAGE prediction with loop predictor
-    wire tage_prediction;
-    wire loop_prediction;
-    wire use_loop_pred;
-    
-    tage_predictor #(
+    assign PC_enable = !stall | flush;
+
+    always_ff @(posedge clk or posedge reset) begin
+        if (reset) 
+            PC_q <= `PC_RESET;
+        else if (PC_enable) 
+            PC_q <= PC_n;
+    end
+
+    // next PC logic
+    always_comb begin
+    if (flush) begin
+            // Misprediction recovery - highest priority
+            PC_n = new_PC;  
+        end else if (taken_branch_valid) begin
+            // Predicted branch
+            PC_n = taken_branch_target_pc;
+        end else begin
+            // Sequential flow
+            PC_n = PC_q + 4*`ISSUE_WIDTH;
+        end
+    end
+
+    // ---- I-cache requests ----
+    genvar w;
+    generate
+        for (w = 0; w < `ISSUE_WIDTH; w++) begin : G_ICACHE
+            assign proc2Icache_addr[w]    = PC_q + w*4;
+            assign instruction[w] = proc2Icache_addr[w][2] ? 
+                                  mem2Icache_data[w][63:32] : 
+                                  mem2Icache_data[w][31:0];
+            assign pc[w] = PC_q + w*4;
+        end
+    endgenerate
+
+    // Instantiate the N-Way TAGE Predictor
+    // NOTE: Parameters here must match the design's requirements.
+    tage_predictor_n_way #(
         .NUM_TABLES(7),
         .TAG_WIDTH(14),
         .CTR_WIDTH(3),
@@ -44,330 +92,321 @@ module branch_predictor (
     ) tage_predictor_inst (
         .clk(clk),
         .reset(reset),
-        .pc(pc),
+
+        // Prediction Interface
+        .predict_pc(pc),
+        .predict_instruction(instruction),
+
+        // Update Interface
+        .update_valid(update_valid),
+        .update_pc(update_pc),
         .branch_taken(branch_taken_actual),
         .is_branch(is_branch_actual),
-        .prediction(tage_prediction),
-        .loop_prediction(loop_prediction),
-        .use_loop_pred(use_loop_pred)
-    );
-    
-    // Final prediction with loop priority
-    wire raw_prediction;
+        .update_provider_component(update_provider_component),
+        .update_indices(update_indices),
+        .update_ghist_snapshot(update_ghist_snapshot),
 
-    assign raw_prediction = unconditional_taken ? 1'b1 :
-                             (use_loop_pred ? loop_prediction : tage_prediction);
-    
-    assign prediction = !raw_prediction;
-    // New PC calculation
-    reg [31:0] predicted_target;
+        // Prediction Outputs
+        .prediction_out(prediction),
+        .is_branch_out(is_branch),
+        .is_unconditional_out(is_unconditional)
+        // Metadata outputs are ignored here but would be pipelined in a real CPU
+    );
+
+    // --- Target PC Calculation and First-Taken-Branch Selection ---
     always_comb begin
-        if (is_jal_inst) begin
-            predicted_target = jal_target;
-        end else if (is_jalr_inst) begin
-            // For JALR, we need RS1 value which we don't have here
-            // In a real implementation, this would come from register file
-            // For prediction purposes, we'll just use the base address
-            predicted_target = jalr_target_base;
-        end else if (is_branch_inst) begin
-            predicted_target = branch_target;
-        end else begin
-            predicted_target = pc + 4; // Default to next instruction
+        // Local declarations for procedural assignments
+        logic [`ISSUE_WIDTH-1:0][6:0]  opcode;
+        logic [`ISSUE_WIDTH-1:0]       is_branch_inst;
+        logic [`ISSUE_WIDTH-1:0]       is_jal_inst;
+        logic [`ISSUE_WIDTH-1:0]       is_jalr_inst;
+        logic [`ISSUE_WIDTH-1:0]       predicted_taken;
+        logic [31:0]        jal_imm [0:`ISSUE_WIDTH-1];
+        logic [31:0]        branch_imm [0:`ISSUE_WIDTH-1];
+        logic [31:0]        jalr_target [0:`ISSUE_WIDTH-1];
+
+        taken_branch_valid = 1'b0;
+        taken_branch_way   = '0;
+        taken_branch_target_pc = '0;
+
+        for (int i = 0; i < `ISSUE_WIDTH; i++) begin
+            // Instruction decode
+            opcode[i]        = instruction[i][6:0];
+            is_branch_inst[i] = (opcode[i] == 7'b1100011);
+            is_jal_inst[i]    = (opcode[i] == 7'b1101111);
+            is_jalr_inst[i]   = (opcode[i] == 7'b1100111);
+            // Immediate extraction
+            jal_imm[i]    = {{12{instruction[i][31]}},
+                            instruction[i][19:12],
+                            instruction[i][20],
+                            instruction[i][30:21], 1'b0};
+
+            branch_imm[i] = {{20{instruction[i][31]}},
+                            instruction[i][7],
+                            instruction[i][30:25],
+                            instruction[i][11:8], 1'b0};
+
+            jalr_target[i] = (pc[i] + `RV32_signext_Iimm(instruction[i])) & 32'hFFFFFFFE;
+
+            // Predicted taken?
+            predicted_taken[i] = prediction[i] &
+                                (is_branch_inst[i] | is_jal_inst[i] | is_jalr_inst[i]);
+
+            // First taken branch
+            if (!taken_branch_valid && predicted_taken[i]) begin
+                taken_branch_valid     = 1'b1;
+                taken_branch_way       = i;
+                if (is_jal_inst[i])
+                    taken_branch_target_pc = pc[i] + jal_imm[i];
+                else if (is_branch_inst[i])
+                    taken_branch_target_pc = pc[i] + branch_imm[i];
+                else // jalr
+                    taken_branch_target_pc = jalr_target[i];
+            end
         end
     end
-    
-    // Select new PC based on prediction
-    assign new_PC = (prediction && (is_branch_inst || is_jal_inst || is_jalr_inst)) ? 
-                    predicted_target : 
-                    pc + 4;
-
 endmodule
 
-module tage_predictor #(
-    parameter NUM_TABLES = 7,         // Including bimodal table
-    parameter TAG_WIDTH = 14,          // Tag width for TAGE tables
-    parameter CTR_WIDTH = 3,           // Counter width
-    parameter TABLE_SIZE = 2048,       // Entries per table
-    parameter GHIST_WIDTH = 256,       // Global history width
-    parameter USEFUL_WIDTH = 2,        // Useful counter width
-    parameter ALLOC_THRESH = 2         // Allocation threshold
+// This is the core N-way TAGE predictor module.
+// It removes the loop predictor and adds N-way prediction with speculative history updates.
+module tage_predictor_n_way #(
+    parameter NUM_TABLES = 7,
+    parameter TAG_WIDTH = 14,
+    parameter CTR_WIDTH = 3,
+    parameter TABLE_SIZE = 2048,
+    parameter GHIST_WIDTH = 256,
+    parameter USEFUL_WIDTH = 2,
+    parameter ALLOC_THRESH = 2
 )(
     input wire clk,
     input wire reset,
-    input wire [31:0] pc,
-    input wire branch_taken,
-    input wire is_branch,
-    output reg prediction,
-    output reg loop_prediction,
-    output reg use_loop_pred
+    input wire [31:0] predict_pc [`ISSUE_WIDTH-1:0],
+    input wire [31:0] predict_instruction [`ISSUE_WIDTH-1:0],
+    input wire                       update_valid,
+    input wire [31:0]                update_pc,
+    input wire                       branch_taken,
+    input wire                       is_branch,
+    input wire [2:0]                 update_provider_component,
+    input wire [($clog2(TABLE_SIZE)*NUM_TABLES)-1:0] update_indices,
+    input wire [GHIST_WIDTH-1:0]     update_ghist_snapshot,
+    // Change outputs to logic
+    output logic [`ISSUE_WIDTH-1:0]              prediction_out,
+    output logic [`ISSUE_WIDTH-1:0]              is_branch_out,
+    output logic [`ISSUE_WIDTH-1:0]              is_unconditional_out,
+    output logic [`ISSUE_WIDTH-1:0][2:0]         provider_component_out,
+    output logic [`ISSUE_WIDTH-1:0][2:0]         alt_provider_component_out,
+    output logic [`ISSUE_WIDTH-1:0][($clog2(TABLE_SIZE)*NUM_TABLES)-1:0] computed_indices_out,
+    output logic [`ISSUE_WIDTH-1:0][GHIST_WIDTH-1:0] ghist_snapshot_out
 );
 
-    // Derived parameters
-    localparam INDEX_WIDTH = $clog2(TABLE_SIZE);
-    localparam int HISTORY_LEN [7] = '{0, 4, 10, 20, 40, 80, 160}; // History lengths
-    
-    // Global history registers
-    reg [GHIST_WIDTH-1:0] global_history;
-    
-    // Loop detection registers
-    reg [31:0] last_branch_pc [0:3];  // Last 4 branch PCs
-    reg [15:0] loop_counter [0:3];     // Loop counters
-    reg [1:0]  loop_state [0:3];       // Loop states: 00=inactive, 01=detecting, 10=active
-    reg [1:0]  loop_ptr;               // Current loop buffer pointer
-    
-    // Loop detection logic
-    wire loop_detected = (loop_state[0] == 2'b10) || 
-                         (loop_state[1] == 2'b10) || 
-                         (loop_state[2] == 2'b10) || 
-                         (loop_state[3] == 2'b10);
-    
-    // History update logic
-    always @(posedge clk) begin
-        if (reset) begin
-            global_history <= '0;
-            for (int i = 0; i < 4; i++) begin
-                last_branch_pc[i] <= '0;
-                loop_counter[i] <= '0;
-                loop_state[i] <= 2'b00;
-            end
-            loop_ptr <= 0;
-        end
-        else if (is_branch) begin
-            // Update global history
-            global_history <= {global_history[GHIST_WIDTH-2:0], branch_taken};
-            
-            // Update loop detector
-            if (loop_state[loop_ptr] == 2'b10) begin
-                // Active loop: increment counter
-                loop_counter[loop_ptr] <= loop_counter[loop_ptr] + 1;
-                
-                // Check for loop exit
-                if (!branch_taken) begin
-                    loop_state[loop_ptr] <= 2'b00; // End loop
-                    loop_ptr <= (loop_ptr + 1) % 4; // Move to next slot
-                end
-            end
-            else if (branch_taken && (pc == last_branch_pc[loop_ptr])) begin
-                // Potential loop start
-                if (loop_state[loop_ptr] == 2'b01) begin
-                    // Second occurrence - confirm loop
-                    loop_state[loop_ptr] <= 2'b10;
-                    loop_counter[loop_ptr] <= 2;
-                end
-                else begin
-                    // First occurrence
-                    loop_state[loop_ptr] <= 2'b01;
-                    loop_counter[loop_ptr] <= 1;
-                end
-            end
-            else begin
-                // Reset detection state
-                loop_state[loop_ptr] <= 2'b00;
-            end
-            
-            // Store current PC
-            last_branch_pc[loop_ptr] <= pc;
-        end
-    end
-    
-    // Loop prediction logic
-    always_comb begin
-        loop_prediction = 1'b0;
-        use_loop_pred = 1'b0;
-        
-        // Check all loop slots
-        for (int i = 0; i < 4; i++) begin
-            if (loop_state[i] == 2'b10) begin
-                // Predict taken except when counter is multiple of 4
-                loop_prediction = (loop_counter[i][1:0] != 2'b00);
-                use_loop_pred = 1'b1;
-                break; // Use first active loop found
-            end
-        end
-    end
-    
-    // Prediction tables
-    // Table 0: Bimodal
-    reg [CTR_WIDTH-1:0] bimodal_table [0:TABLE_SIZE-1];
-    
-    // Tagged tables
+    // ========== ADDED DECLARATIONS ==========
     typedef struct packed {
-        logic valid; 
+        logic valid;
         logic [TAG_WIDTH-1:0] tag;
         logic [CTR_WIDTH-1:0] ctr;
-        logic [USEFUL_WIDTH-1:0] useful;  // Useful counter
+        logic [USEFUL_WIDTH-1:0] useful;
     } tage_entry_t;
-    
+
+    localparam INDEX_WIDTH = $clog2(TABLE_SIZE);
+    localparam int HISTORY_LEN [NUM_TABLES] = '{0, 4, 8, 16, 32, 64, 128};
+    function automatic [TAG_WIDTH-1:0] compute_tag(
+        input int table_idx,
+        input [31:0] pc_val,
+        input [GHIST_WIDTH-1:0] ghist_val
+    );
+        integer k;
+        reg [TAG_WIDTH-1:0] folded_hist_tag;
+    begin
+        folded_hist_tag = '0;
+        for (k = 0; k < HISTORY_LEN[table_idx]; k = k + 1) begin
+            if (k < GHIST_WIDTH) begin
+                folded_hist_tag = folded_hist_tag ^ (ghist_val[k] << (k % TAG_WIDTH));
+            end
+        end
+        compute_tag = pc_val[31:18] ^ pc_val[17:4] ^ folded_hist_tag;
+    end
+    endfunction
+    logic [GHIST_WIDTH-1:0] global_history;
+    logic [CTR_WIDTH-1:0] bimodal_table [0:TABLE_SIZE-1];
     tage_entry_t tage_tables [1:NUM_TABLES-1][0:TABLE_SIZE-1];
     
-    // Initialize tables
-    integer i, j;
-    always @(posedge clk) begin
-        if (reset) begin
-            for (i = 0; i < TABLE_SIZE; i = i + 1) begin
-                bimodal_table[i] <= {1'b0, 1'b1, 1'b0};  // Weakly taken (3'b010)
-            end
-            for (j = 1; j < NUM_TABLES; j = j + 1) begin
-                for (i = 0; i < TABLE_SIZE; i = i + 1) begin
-                    tage_tables[j][i] <= '{
-                        valid: 1'b0, 
-                        tag: '0, 
-                        ctr: {1'b0, 1'b1, 1'b0}, // Weakly taken
-                        useful: '0
-                    };
-                end
-            end
-        end
-    end
-    
-    // Compute indices and tags
-    wire [INDEX_WIDTH-1:0] base_index = pc[INDEX_WIDTH+1:2];
-    
-    // Wire declarations
-    wire [INDEX_WIDTH-1:0] tage_index [1:NUM_TABLES-1];
-    wire [TAG_WIDTH-1:0] tage_tag [1:NUM_TABLES-1];
-    wire [NUM_TABLES-1:1] tag_match;
-    wire [NUM_TABLES-1:1] tage_pred;
-    
-    // Generate hash computations
-    generate
-        for (genvar t = 1; t < NUM_TABLES; t++) begin: table_hash
-            // Effective history length
-            localparam int hist_len = (HISTORY_LEN[t] > GHIST_WIDTH) ? 
-                                     GHIST_WIDTH : HISTORY_LEN[t];
-            
-            // Folded history calculation
-            reg [INDEX_WIDTH-1:0] folded_index;
-            reg [TAG_WIDTH-1:0] folded_tag;
-            
-            always_comb begin
-                folded_index = '0;
-                folded_tag = '0;
+    logic [GHIST_WIDTH-1:0] spec_ghist;
+    logic tage_pred;
+    logic [6:0] opcode;
+    logic [INDEX_WIDTH-1:0] current_bimodal_idx;
+    logic [INDEX_WIDTH-1:0] current_tage_idx [1:NUM_TABLES-1];
+    logic [TAG_WIDTH-1:0]  current_tage_tag [1:NUM_TABLES-1];
+    logic [NUM_TABLES-1:1] tag_match;
+    //==========================================================================
+    // PREDICTION LOGIC (Combinational for N ways with speculative GHR)
+    //==========================================================================
+    always_comb begin
+        spec_ghist = global_history;
+        for (int i = 0; i < `ISSUE_WIDTH; i = i + 1) begin
+            // Use logic instead of wire
+            opcode = predict_instruction[i][6:0];
+            // --- Per-Way Instruction Decoding ---
+            is_branch_out[i] = (opcode == 7'b1100011);
+            is_unconditional_out[i] = (opcode == 7'b1101111) | (opcode == 7'b1100111);
+
+            // --- Hashing and Index/Tag Calculation using spec_ghist ---
+
+            current_bimodal_idx = predict_pc[i][INDEX_WIDTH+1:2];
+
+            for (int t = 1; t < NUM_TABLES; t++) begin
+                automatic int hist_len = HISTORY_LEN[t];
+                automatic reg [INDEX_WIDTH-1:0] folded_hist_idx = '0;
+                automatic reg [TAG_WIDTH-1:0]  folded_hist_tag = '0;
                 for (int k = 0; k < hist_len; k++) begin
                     if (k < GHIST_WIDTH) begin
-                        folded_index = folded_index ^ (global_history[k] << (k % INDEX_WIDTH));
-                        folded_tag = folded_tag ^ (global_history[k] << (k % TAG_WIDTH));
+                        folded_hist_idx = folded_hist_idx ^ (spec_ghist[k] << (k % INDEX_WIDTH));
+                        folded_hist_tag = folded_hist_tag ^ (spec_ghist[k] << (k % TAG_WIDTH));
                     end
                 end
+                current_tage_idx[t] = predict_pc[i][INDEX_WIDTH+1:2] ^ folded_hist_idx;
+                current_tage_tag[t] = predict_pc[i][31:18] ^ predict_pc[i][17:4] ^ folded_hist_tag;
             end
-            
-            // Index and tag computation
-            assign tage_index[t] = pc[INDEX_WIDTH+1:2] ^ folded_index;
-            assign tage_tag[t] = pc[31:18] ^ folded_tag;
-            
-            // Tag matching
-            assign tag_match[t] = tage_tables[t][tage_index[t]].valid && 
-                                 (tage_tables[t][tage_index[t]].tag == tage_tag[t]);
-            assign tage_pred[t] = tage_tables[t][tage_index[t]].ctr[CTR_WIDTH-1];
-        end
-    endgenerate
-    
-    // Prediction logic
-    reg [2:0] provider;  // Provider table
-    reg [2:0] alt_provider; // Alternate provider
-    
-    // Base prediction
-    wire base_pred = bimodal_table[base_index][CTR_WIDTH-1];
-    
-    // Provider selection
-    always_comb begin
-        provider = '0;
-        alt_provider = '0;
-        
-        // Find highest priority matching table
-        for (int t = NUM_TABLES-1; t >= 1; t--) begin
-            if (tag_match[t]) begin
-                provider = t;
-                break;
+
+            // --- Provider Selection and Prediction ---
+            for (int t = 1; t < NUM_TABLES; t++) begin
+                tag_match[t] = tage_tables[t][current_tage_idx[t]].valid &&
+                               (tage_tables[t][current_tage_idx[t]].tag == current_tage_tag[t]);
             end
-        end
-        
-        // Find alternate provider
-        if (provider > 0) begin
-            for (int t = provider-1; t >= 0; t--) begin
-                if (t == 0) begin
-                    alt_provider = 0;
-                    break;
-                end
-                else if (tag_match[t]) begin
-                    alt_provider = t;
+
+            provider_component_out[i] = '0;
+            for (int t = NUM_TABLES - 1; t >= 1; t--) begin
+                if (tag_match[t]) begin
+                    provider_component_out[i] = t;
                     break;
                 end
             end
-        end
-    end
-    
-    // Final prediction
-    always_comb begin
-        if (use_loop_pred) begin
-            prediction = loop_prediction;
-        end
-        else if (provider == 0) begin
-            prediction = base_pred;
-        end
-        else begin
-            prediction = tage_pred[provider];
-        end
-    end
-    
-    // Update logic
-    always @(posedge clk) begin
-        if (!reset && is_branch) begin
-            // Update used entry
-            if (provider == 0 && !use_loop_pred) begin
-                // Update bimodal
-                if (branch_taken) begin
-                    if (bimodal_table[base_index] < (2**CTR_WIDTH)-1)
-                        bimodal_table[base_index] <= bimodal_table[base_index] + 1;
-                end
-                else begin
-                    if (bimodal_table[base_index] > 0)
-                        bimodal_table[base_index] <= bimodal_table[base_index] - 1;
-                end
-            end
-            else if (provider > 0) begin
-                // Update tagged table counter
-                tage_entry_t entry = tage_tables[provider][tage_index[provider]];
-                
-                if (branch_taken) begin
-                    if (entry.ctr < (2**CTR_WIDTH)-1)
-                        entry.ctr = entry.ctr + 1;
-                end
-                else begin
-                    if (entry.ctr > 0)
-                        entry.ctr = entry.ctr - 1;
-                end
-                
-                // Update useful counter
-                if (prediction == branch_taken) begin
-                    if (entry.useful < (2**USEFUL_WIDTH)-1)
-                        entry.useful = entry.useful + 1;
-                end
-                else if (entry.useful > 0) begin
-                    entry.useful = entry.useful - 1;
-                end
-                
-                tage_tables[provider][tage_index[provider]] <= entry;
-            end
-            
-            // Allocation on misprediction
-            if (prediction != branch_taken && !use_loop_pred) begin
-                // Try to allocate in higher tables
-                for (int t = provider+1; t < NUM_TABLES; t++) begin
-                    if (!tage_tables[t][tage_index[t]].valid || 
-                        tage_tables[t][tage_index[t]].useful < ALLOC_THRESH) begin
-                        
-                        tage_tables[t][tage_index[t]] <= '{
-                            valid: 1'b1,
-                            tag: tage_tag[t],
-                            ctr: branch_taken ? (2**CTR_WIDTH)-1 : 0,
-                            useful: 0
-                        };
+
+            alt_provider_component_out[i] = '0;
+            if (provider_component_out[i] > 0) begin
+                for (int t = provider_component_out[i] - 1; t >= 1; t--) begin
+                    if (tag_match[t]) begin
+                        alt_provider_component_out[i] = t;
                         break;
                     end
                 end
             end
+
+            // --- Generate TAGE Prediction ---
+            tage_pred = 0;
+            if (provider_component_out[i] != 0) begin
+                tage_pred = tage_tables[provider_component_out[i]][current_tage_idx[provider_component_out[i]]].ctr[CTR_WIDTH-1];
+            end else begin
+                tage_pred = bimodal_table[current_bimodal_idx][CTR_WIDTH-1];
+            end
+
+            // Final prediction for this way (unconditional branches are always "taken")
+            prediction_out[i] = is_unconditional_out[i] ? 1'b1 : tage_pred;
+
+            // --- Metadata Output Assignment ---
+            ghist_snapshot_out[i] = spec_ghist; // Save GHR state *before* this way's update
+            computed_indices_out[i][INDEX_WIDTH-1:0] = current_bimodal_idx;
+            for (int t = 1; t < NUM_TABLES; t=t+1) begin
+                computed_indices_out[i][(t+1)*INDEX_WIDTH-1 -: INDEX_WIDTH] = current_tage_idx[t];
+            end
+
+            // --- Speculative GHR Update ---
+            // Update history for the *next* way's prediction if this is a conditional branch
+            if (is_branch_out[i]) begin
+                spec_ghist = {prediction_out[i], spec_ghist[GHIST_WIDTH-1:1]};
+            end
         end
     end
 
+    //==========================================================================
+    // UPDATE LOGIC (Synchronous on branch resolution)
+    //==========================================================================
+    logic [INDEX_WIDTH-1:0] bimodal_update_idx;
+    logic [INDEX_WIDTH-1:0] tage_update_idx [1:NUM_TABLES-1];
+    logic provider_pred_correct;
+    logic alt_pred_correct;
+    always @(posedge clk) begin
+        if (reset) begin
+            global_history <= '0;
+            for (integer i = 0; i < TABLE_SIZE; i = i + 1) begin
+                bimodal_table[i] <= (1 << (CTR_WIDTH - 2)); // Weakly not-taken
+            end
+            for (integer j = 1; j < NUM_TABLES; j = j + 1) begin
+                for (integer i = 0; i < TABLE_SIZE; i = i + 1) begin
+                    tage_tables[j][i] <= '{default: '0};
+                end
+            end
+        end else if (update_valid && is_branch) begin
+            // --- Step 1: Update NON-SPECULATIVE Global History ---
+            global_history <= {global_history[GHIST_WIDTH-2:0], branch_taken};
+
+            // --- Step 2: Unpack Pipelined Indices ---
+            // Change wire to logic
+            
+            bimodal_update_idx = update_indices[INDEX_WIDTH-1:0];
+            for (int t = 1; t < NUM_TABLES; t++) begin
+                tage_update_idx[t] = update_indices[(t+1)*INDEX_WIDTH-1 -: INDEX_WIDTH];
+            end
+
+            // --- Step 3: Update Prediction Counters ---
+            // Change reg to logic
+            
+            
+            // Determine if the original predictions were correct
+            if (update_provider_component == 0) begin
+                provider_pred_correct = (bimodal_table[bimodal_update_idx][CTR_WIDTH-1] == branch_taken);
+            end else begin
+                provider_pred_correct = (tage_tables[update_provider_component][tage_update_idx[update_provider_component]].ctr[CTR_WIDTH-1] == branch_taken);
+            end
+
+            // Update the counter of the provider component
+            if (update_provider_component == 0) begin // Bimodal provided
+                if (branch_taken) begin
+                    if (bimodal_table[bimodal_update_idx] < (1<<CTR_WIDTH)-1)
+                        bimodal_table[bimodal_update_idx] <= bimodal_table[bimodal_update_idx] + 1;
+                end else begin
+                    if (bimodal_table[bimodal_update_idx] > 0)
+                        bimodal_table[bimodal_update_idx] <= bimodal_table[bimodal_update_idx] - 1;
+                end
+            end else begin // A TAGE component provided
+                tage_entry_t current_entry, next_entry;
+                current_entry = tage_tables[update_provider_component][tage_update_idx[update_provider_component]];
+                next_entry = current_entry; // Calculate next state combinationally
+
+                if (branch_taken) begin
+                    if (current_entry.ctr < (1<<CTR_WIDTH)-1) next_entry.ctr = current_entry.ctr + 1;
+                end else begin
+                    if (current_entry.ctr > 0) next_entry.ctr = current_entry.ctr - 1;
+                end
+
+                // Update 'useful' bits only if TAGE prediction differed from bimodal
+                // Change wire to logic
+                
+                alt_pred_correct = (bimodal_table[bimodal_update_idx][CTR_WIDTH-1] == branch_taken);
+                
+                if (provider_pred_correct != alt_pred_correct) begin
+                    if (provider_pred_correct) begin
+                        if (current_entry.useful < (1<<USEFUL_WIDTH)-1) next_entry.useful = current_entry.useful + 1;
+                    end else begin
+                        if (current_entry.useful > 0) next_entry.useful = current_entry.useful - 1;
+                    end
+                end
+                tage_tables[update_provider_component][tage_update_idx[update_provider_component]] <= next_entry;
+            end
+            // --- Step 4: Allocate New Entry on Misprediction ---
+            if (!provider_pred_correct) begin
+                automatic int start_alloc_table = (update_provider_component < NUM_TABLES - 1) ? (update_provider_component + 1) : (NUM_TABLES - 1);
+                for (int t = start_alloc_table; t < NUM_TABLES; t++) begin
+                    if (tage_tables[t][tage_update_idx[t]].useful < ALLOC_THRESH) begin
+                        tage_entry_t new_entry;
+                        new_entry.valid = 1'b1;
+                        new_entry.tag = compute_tag(t, update_pc, update_ghist_snapshot);
+                        new_entry.ctr = (1 << (CTR_WIDTH - 2)); // Weakly taken/not-taken based on actual outcome
+                        new_entry.useful = 0;
+                        tage_tables[t][tage_update_idx[t]] <= new_entry;
+                        break; // Allocate only one entry
+                    end
+                end
+            end
+        end
+    end
 endmodule

@@ -23,16 +23,20 @@ module if_stage_with_branch_prediction (
     input  logic                          flush,
     input  XLEN_t                         new_PC,        // redirected PC on branch
     input  logic                          bp_prediction,  // Prediction signal (taken/not taken)
-    input  XLEN_t                         bp_target,      // Predicted target address
+    input  logic [`ISSUE_WIDTH-1:0] [`XLEN-1:0]    bp_target,      // Predicted target address
     // ---- I-cache interface (superscalar) ----
-    output logic [`ISSUE_WIDTH-1:0] [1:0]         proc2Icache_command, 
+    output logic [`ISSUE_WIDTH-1:0] [1:0]          proc2Icache_command, 
 //    output XLEN_t [`ISSUE_WIDTH-1:0]      proc2Icache_addr,
+    // -- New inputs to receive metadata from the predictor --
+    input  logic [2:0]             bp_provider_component_in[`IW_RANGE],
+    input  bp_indices_t            bp_indices_in           [`IW_RANGE],
+    input  logic [GHIST_WIDTH-1:0]   bp_ghist_snapshot_in  [`IW_RANGE],
     output logic [`ISSUE_WIDTH-1:0] [`XLEN-1:0]    proc2Icache_addr,
     input  logic [`ISSUE_WIDTH-1:0] [3:0]          mem2Icache_response,
     input  logic [`ISSUE_WIDTH-1:0] [63:0]         mem2Icache_data,
     input  logic [`ISSUE_WIDTH-1:0] [3:0]          mem2Icache_tag,
     // ---- IF/ID latch ----
-    output IF_ID_PACKET                   if_id_out
+    output IF_ID_PACKET_BP                   if_id_out
 );
 
     // ---- program counter ----
@@ -80,6 +84,9 @@ module if_stage_with_branch_prediction (
             assign if_id_out.valid[w] = (mem2Icache_response[w] != 0) && 
                                        ~stall && ~flush && 
                                        (mem2Icache_tag[w] == mem2Icache_response[w]);
+            assign if_id_out.provider_component[w] = bp_provider_component_in[w];
+            assign if_id_out.indices[w]            = bp_indices_in[w];
+            assign if_id_out.ghist_snapshot[w]     = bp_ghist_snapshot_in[w];
         end
     endgenerate
 

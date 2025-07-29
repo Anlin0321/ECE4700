@@ -54,7 +54,7 @@ module if_stage_with_branch_prediction (
 
     // next PC logic
     always_comb begin
-    if (flush) begin
+        if (flush) begin
             // Misprediction recovery - highest priority
             PC_n = new_PC;  
         end else if (bp_prediction) begin

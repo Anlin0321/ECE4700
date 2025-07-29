@@ -538,6 +538,7 @@ module pipeline_bp (
         end
     end
 	// synopsys sync_set_reset "reset"
+    assign ex_mem_enable = 1'b1;
 	always_ff @(posedge clk) begin
 		if (rst) begin
 //			ex_mem_IR     <= `SD `NOP;

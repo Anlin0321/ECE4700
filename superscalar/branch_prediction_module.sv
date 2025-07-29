@@ -126,7 +126,7 @@ module branch_predictor #(
         logic [31:0]        jalr_target [0:`ISSUE_WIDTH-1];
 
         taken_branch_valid = 1'b0;
-        taken_branch_way   = '0;
+        taken_branch_way   = -1;
         taken_branch_target_pc = '0;
 
         for (int i = 0; i < `ISSUE_WIDTH; i++) begin

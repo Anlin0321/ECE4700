@@ -1,346 +1,323 @@
-`timescale 1ns/1ps
+/////////////////////////////////////////////////////////////////////////
+//                                                                     //
+//                                                                     //
+//   Modulename :  testbench.v                                         //
+//                                                                     //
+//  Description :  Testbench module for the verisimple pipeline;       //
+//                 Enhanced with branch prediction accuracy tracking   //
+//                                                                     //
+/////////////////////////////////////////////////////////////////////////
 
-module branch_predictor_tb();
+`timescale 1ns/100ps
 
-    // Clock and Reset
-    reg clk = 0;
-    reg reset = 1;
-    always #5 clk = ~clk; 
+import "DPI-C" function void print_header(string str);
+import "DPI-C" function void print_cycles();
+import "DPI-C" function void print_stage(string div, int inst, int npc, int valid_inst);
+import "DPI-C" function void print_reg(int wb_reg_wr_data_out_hi, int wb_reg_wr_data_out_lo,
+                                       int wb_reg_wr_idx_out, int wb_reg_wr_en_out);
+import "DPI-C" function void print_membus(int proc2mem_command, int mem2proc_response,
+                                          int proc2mem_addr_hi, int proc2mem_addr_lo,
+						 			     int proc2mem_data_hi, int proc2mem_data_lo);
+import "DPI-C" function void print_close();
 
-    // Interface Signals
-    reg [31:0] pc;
-    wire [31:0] instruction;
-    reg branch_taken_actual;      
-    reg is_branch_actual;         
-    wire prediction;              
-    wire is_branch_predicted;     
+module testbench;
 
-    // Statistics
-    integer total_instructions = 0;
-    integer total_branches = 0;
-    integer correct_predictions = 0;
-    integer correct_branch_detection = 0;
-    real accuracy;
+    // variables used in the testbench
+    logic        clock;
+    logic        reset;
+    logic [31:0] clock_count;
+    logic [31:0] instr_count;
+    logic [63:0] debug_counter;  // counter for timeout
+    
+    // Branch prediction accuracy tracking variables
+    logic [31:0] total_branches;
+    logic [31:0] correct_predictions;
+    logic [31:0] incorrect_predictions;
+    real         prediction_accuracy;
+    
+    // Superscalar memory interfaces
+    // Instruction Cache Interface
+    logic [`ISSUE_WIDTH-1:0] [1:0]          proc2Icache_command; 
+    logic [`ISSUE_WIDTH-1:0] [`XLEN-1:0]    proc2Icache_addr;
+    logic [`ISSUE_WIDTH-1:0] [3:0]          mem2Icache_response;
+    logic [`ISSUE_WIDTH-1:0] [63:0]         mem2Icache_data;
+    logic [`ISSUE_WIDTH-1:0] [3:0]          mem2Icache_tag;
+    
+    // Data Cache Interface
+    logic [`ISSUE_WIDTH-1:0] [1:0]   proc2Dcache_command;
+    logic [`ISSUE_WIDTH-1:0] [`XLEN-1:0]    proc2Dcache_addr;
+    logic [`ISSUE_WIDTH-1:0] [63:0]         proc2Dcache_data;
+    logic [`ISSUE_WIDTH-1:0] [3:0]          mem2Dcache_response;
+    logic [`ISSUE_WIDTH-1:0] [63:0]         mem2Dcache_data;
+    logic [`ISSUE_WIDTH-1:0] [3:0]          mem2Dcache_tag;
+`ifndef CACHE_MODE
+    MEM_SIZE [`ISSUE_WIDTH-1:0]      proc2Dcache_size;
+`endif
 
-    // Register File
-    reg [31:0] reg_file [0:31];
-    wire [31:0] rs1 = reg_file[instruction[19:15]];
-    wire [31:0] rs2 = reg_file[instruction[24:20]];
+    logic  [$clog2(`ISSUE_WIDTH+1)-1:0] pipeline_completed_insts;
+    EXCEPTION_CODE   pipeline_error_status;
+    
+    // Branch prediction accuracy signals - these need to be connected to your pipeline
+    // You'll need to add these outputs to your pipeline module
+    logic [`ISSUE_WIDTH-1:0] branch_resolved;     // Signal indicating a branch was resolved
+    logic [`ISSUE_WIDTH-1:0] branch_mispredicted; // Signal indicating branch was mispredicted
+    logic [`ISSUE_WIDTH-1:0] branch_taken;        // Actual branch outcome
+    logic [`ISSUE_WIDTH-1:0] branch_predicted;    // Predicted branch outcome
 
-    // Instruction Memory
-    instr_mem imem (
-        .clk(clk),
-        .addr(pc),
-        .instruction(instruction)
+    // Instantiate the Pipeline
+    pipeline_bp core(
+        // Inputs
+        .clk                (clock),
+        .rst                (reset),
+        
+        // I-cache Interface
+        .proc2Icache_command(proc2Icache_command),
+        .proc2Icache_addr   (proc2Icache_addr),
+        .mem2Icache_response(mem2Icache_response),
+        .mem2Icache_data    (mem2Icache_data),
+        .mem2Icache_tag     (mem2Icache_tag),
+        
+        // D-cache Interface
+        .proc2Dcache_command(proc2Dcache_command),
+        .proc2Dcache_addr   (proc2Dcache_addr),
+        .proc2Dcache_data   (proc2Dcache_data),
+`ifndef CACHE_MODE
+        .proc2Dcache_size   (proc2Dcache_size),
+`endif
+        .mem2Dcache_response(mem2Dcache_response),
+        .mem2Dcache_data    (mem2Dcache_data),
+        .mem2Dcache_tag     (mem2Dcache_tag),
+        
+        .pipeline_completed_insts(pipeline_completed_insts),
+        .pipeline_error_status(pipeline_error_status)
+        
+        // Branch prediction accuracy outputs - ADD THESE TO YOUR PIPELINE MODULE
+        // .branch_resolved(branch_resolved),
+        // .branch_mispredicted(branch_mispredicted),
+        // .branch_taken(branch_taken),
+        // .branch_predicted(branch_predicted)
     );
+    
+    // Instantiate the Instruction Memory
+    passthru_mem mem (
+        // Inputs
+        .clk               (clock),
+        .proc2Imem_command  (proc2Icache_command),
+        .proc2Imem_addr     (proc2Icache_addr),
 
-    // Data Memory
-    data_mem dmem (
-        .clk(clk),
-        .addr(mem_addr),
-        .write_en(mem_we),
-        .write_data(rs2),
-        .read_data(mem_rdata)
+        // Outputs
+        .mem2Iproc_response (mem2Icache_response),
+        .mem2Iproc_data     (mem2Icache_data),
+        .mem2Iproc_tag      (mem2Icache_tag),
+
+        // Inputs
+        .proc2Dmem_command  (proc2Dcache_command),
+        .proc2Dmem_addr     (proc2Dcache_addr),
+        .proc2Dmem_data     (proc2Dcache_data),
+
+        // Outputs
+        .mem2Dproc_response (mem2Dcache_response),
+        .mem2Dproc_data     (mem2Dcache_data),
+        .mem2Dproc_tag      (mem2Dcache_tag),
+        
+        `ifndef CACHE_MODE
+        .proc2Dmem_size     (proc2Dcache_size)
+        `endif
     );
-
-    // Branch Predictor
-    branch_predictor uut (
-        .clk(clk),
-        .reset(reset),
-        .pc(pc),
-        .instruction(instruction),
-        .branch_taken_actual(branch_taken_actual),
-        .is_branch_actual(is_branch_actual),
-        .prediction(prediction),
-        .is_branch_predicted(is_branch_predicted)
-    );
-
-    // Execution Signals
-    reg [31:0] next_pc;
-    reg [31:0] target_address;
-    reg branch_taken;
-    reg [31:0] mem_addr;
-    reg mem_we;
-    wire [31:0] mem_rdata;
-    reg [4:0] write_rd;
-    reg reg_we;
-    reg [31:0] write_data;
-
-    initial begin
-        // Initialize Register File
-        for (int i = 0; i < 32; i++) begin
-            reg_file[i] = 0;
-        end
-        
-        // Initialize Control Signals
-        pc = 0;
-        branch_taken_actual = 0;
-        is_branch_actual = 0;
-        mem_we = 0;
-        reg_we = 0;
-        
-        // Reset Sequence
-        reset = 1;
-        #20 reset = 0;
-        
-        $display("\n=== Starting Test ===");
-        
-        // Run simulation
-        while (1) begin
-            #10; // Wait for combinational logic
-            
-            // Check for unknown instruction (should not happen after initialization)
-            if (instruction === 32'hxxxxxxxx) begin
-                $display("Unknown instruction at PC=%h. Halting simulation.", pc);
-                break;
-            end
-            
-            // Check for program completion
-            if (instruction === 32'h00000000) begin
-                $display("Program completed at PC=%h", pc);
-                break;
-            end
-            
-            // Execute instruction
-            execute_instruction();
-            
-            // Update PC
-            pc = next_pc;
-            total_instructions++;
-            
-            // Safety break
-            if (total_instructions > 1_000_000) begin
-                $display("Timeout at 1,000,000 instructions");
-                break;
-            end
-        end
-        
-        // Calculate statistics
-        if (total_branches > 0) begin
-            accuracy = (real'(correct_predictions) / total_branches) * 100;
-        end else begin
-            accuracy = -1;
-        end
-        
-        $display("\n=== Results ===");
-        $display("Total Instructions: %0d", total_instructions);
-        $display("Branch Prediction Accuracy: %.2f%%, (%d / %d)", accuracy, correct_predictions, total_branches);
-        $finish;
+    
+    // Generate System Clock
+    always begin
+        #(`VERILOG_CLOCK_PERIOD/2.0);
+        clock = ~clock;
     end
+    
+    // Task to display # of elapsed clock edges
+    task show_clk_count;
+        real cpi;
+        
+        begin
+            cpi = (clock_count + 1.0) / instr_count;
+            $display("@@  %0d cycles / %0d instrs = %f CPI\n@@",
+                      clock_count+1, instr_count, cpi);
+            $display("@@  %4.2f ns total time to execute\n@@\n",
+                      clock_count*`VERILOG_CLOCK_PERIOD);
+        end
+    endtask  // task show_clk_count 
+    
+    // Task to display branch prediction accuracy
+    task show_bp_accuracy;
+        begin
+            if (total_branches > 0) begin
+                prediction_accuracy = (correct_predictions * 100.0) / total_branches;
+                $display("@@");
+                $display("@@  Branch Prediction Statistics:");
+                $display("@@  Total Branches:        %0d", total_branches);
+                $display("@@  Correct Predictions:   %0d", correct_predictions);
+                $display("@@  Incorrect Predictions: %0d", incorrect_predictions);
+                $display("@@  Prediction Accuracy:   %0.2f%%", prediction_accuracy);
+                $display("@@");
+            end else begin
+                $display("@@  No branch instructions executed");
+            end
+        end
+    endtask  // task show_bp_accuracy
+    
+    // Simulate memory
+    string program_name = "testbench1.mem";
 
-    // Execute current instruction
-    task execute_instruction();
-        automatic reg [6:0] opcode = instruction[6:0];
-        automatic reg [2:0] funct3 = instruction[14:12];
-        automatic reg [6:0] funct7 = instruction[31:25];
-        automatic reg [31:0] imm;
-        
-        // Default values
-        next_pc = pc + 4;
-        branch_taken = 0;
-        mem_we = 0;
-        reg_we = 0;
-        write_rd = 0;
-        write_data = 0;
-        is_branch_actual = 0;
-        branch_taken_actual = 0;
-        mem_addr = 0;
-        
-        case (opcode)
-            // LUI
-            7'b0110111: begin
-                write_rd = instruction[11:7];
-                write_data = {instruction[31:12], 12'b0};
-                reg_we = 1;
-            end
-            
-            // AUIPC
-            7'b0010111: begin
-                write_rd = instruction[11:7];
-                write_data = pc + {instruction[31:12], 12'b0};
-                reg_we = 1;
-            end
-            
-            // JAL
-            7'b1101111: begin
-                imm = {{12{instruction[31]}}, instruction[19:12], instruction[20], instruction[30:21], 1'b0};
-                target_address = pc + imm;
-                write_rd = instruction[11:7];
-                write_data = pc + 4;
-                reg_we = 1;
-                branch_taken = 1;
-                is_branch_actual = 1;
-            end
-            
-            // JALR
-            7'b1100111: begin
-                imm = {{20{instruction[31]}}, instruction[31:20]};
-                target_address = (rs1 + imm) & ~32'd1;
-                write_rd = instruction[11:7];
-                write_data = pc + 4;
-                reg_we = 1;
-                branch_taken = 1;
-                is_branch_actual = 1;
-            end
-            
-            // Branch
-            7'b1100011: begin
-                imm = {{20{instruction[31]}}, instruction[7], instruction[30:25], instruction[11:8], 1'b0};
-                target_address = pc + imm;
-                is_branch_actual = 1;
-                
-                case (funct3)
-                    3'b000: branch_taken = (rs1 == rs2);  // BEQ
-                    3'b001: branch_taken = (rs1 != rs2);  // BNE
-                    3'b100: branch_taken = ($signed(rs1) < $signed(rs2));  // BLT
-                    3'b101: branch_taken = ($signed(rs1) >= $signed(rs2)); // BGE
-                    3'b110: branch_taken = (rs1 < rs2);   // BLTU
-                    3'b111: branch_taken = (rs1 >= rs2);  // BGEU
-                endcase
-            end
-            
-            // Load
-            7'b0000011: begin
-                imm = {{20{instruction[31]}}, instruction[31:20]};
-                mem_addr = rs1 + imm;
-                write_rd = instruction[11:7];
-                reg_we = 1;
-                
-                case (funct3)
-                    3'b010: write_data = mem_rdata;  // LW
-                    // Add other load types as needed
-                endcase
-            end
-            
-            // Store
-            7'b0100011: begin
-                imm = {{20{instruction[31]}}, instruction[31:25], instruction[11:7]};
-                mem_addr = rs1 + imm;
-                mem_we = 1;
-                
-                case (funct3)
-                    3'b010: mem_we = 1;  // SW
-                    // Add other store types as needed
-                endcase
-            end
-            
-            // ALU operations
-            7'b0010011, 7'b0110011: begin // ALUI/ALU
-                write_rd = instruction[11:7];
-                reg_we = 1;
-                
-                if (opcode == 7'b0010011) // Immediate
-                    imm = {{20{instruction[31]}}, instruction[31:20]};
-                
-                case (funct3)
-                    3'b000: write_data = (opcode == 7'b0010011) ? (rs1 + imm) : (rs1 + rs2); // ADD/ADDI
-                    3'b001: write_data = rs1 << (opcode == 7'b0010011 ? instruction[24:20] : rs2[4:0]); // SLL/SLLI
-                    3'b010: write_data = ($signed(rs1) < $signed(opcode == 7'b0010011 ? imm : rs2)); // SLT/SLTI
-                    3'b011: write_data = (rs1 < (opcode == 7'b0010011 ? imm : rs2)); // SLTU/SLTIU
-                    3'b100: write_data = rs1 ^ (opcode == 7'b0010011 ? imm : rs2); // XOR/XORI
-                    3'b101: write_data = (instruction[30] ? $signed(rs1) >>> (opcode == 7'b0010011 ? instruction[24:20] : rs2[4:0]) 
-                                             : rs1 >> (opcode == 7'b0010011 ? instruction[24:20] : rs2[4:0])); // SRA/SRL/SRAI/SRLI
-                    3'b110: write_data = rs1 | (opcode == 7'b0010011 ? imm : rs2); // OR/ORI
-                    3'b111: write_data = rs1 & (opcode == 7'b0010011 ? imm : rs2); // AND/ANDI
-                endcase
-            end
-        endcase
-        
-        // Update branch taken
-        if (is_branch_actual) begin
-            branch_taken_actual = branch_taken;
-            if (branch_taken) next_pc = target_address;
-        end
-        
-        // Update register file
-        if (reg_we && write_rd != 0) begin
-            reg_file[write_rd] = write_data;
-        end
-        
-        // Check prediction results
-        check_results();
+    task automatic load_program;
+        $readmemh(program_name, mem.instr_memory);
     endtask
 
-    // Check prediction results
-    task check_results();
-        // Branch detection check (only when actual is known)
-        if (is_branch_actual !== 1'bx) begin
-            if (is_branch_predicted === is_branch_actual) begin
-                correct_branch_detection += 1;
-            end else begin
-                $display("Mismatch at PC=%h: Expected is_branch=%b, Got=%b",
-                         pc, is_branch_actual, is_branch_predicted);
-            end
+    task automatic clear_dmem;
+        for (int i=0; i<`MEM_64BIT_LINES; i++)
+            mem.data_memory[i] = 64'h0;
+    endtask
+
+    // Task to display memory contents
+    task show_mem_with_decimal;
+        input [31:0] start_addr;
+        input [31:0] end_addr;
+        int showing_data;
+        begin
+            $display("@@@");
+            showing_data=0;
+            for(int k=start_addr;k<=end_addr; k=k+1)
+                if (mem.data_memory[k] != 0) begin
+                    $display("@@@ dmem[%5d] = %x : %0d", k*8, mem.data_memory[k], 
+                                                        mem.data_memory[k]);
+                    showing_data=1;
+                end else if(showing_data!=0) begin
+                    $display("@@@");
+                    showing_data=0;
+                end
+            $display("@@@");
         end
+    endtask  // task show_mem_with_decimal
+    
+    initial begin
+        $dumpvars;
+    
+        clock = 1'b0;
+        reset = 1'b0;
+        debug_counter = 0;
+        clock_count = 0;
         
-        // Branch prediction check (only when actual taken is known)
-        if (is_branch_actual) begin
-            if (branch_taken_actual !== 1'bx) begin
-                total_branches += 1;
-                if (prediction === branch_taken_actual) begin
-                    correct_predictions += 1;
-                    $display("Predict at PC=%h: Actual=%b, Predicted=%b",
-                             pc, branch_taken_actual, prediction);
-                end else begin
-                    $display("Mispredict at PC=%h: Actual=%b, Predicted=%b",
-                             pc, branch_taken_actual, prediction);
+        // Initialize branch prediction tracking variables
+        total_branches = 0;
+        correct_predictions = 0;
+        incorrect_predictions = 0;
+        prediction_accuracy = 0.0;
+        
+        // Pulse the reset signal
+        $display("@@\n@@\n@@  %t  Asserting System reset......", $realtime);
+        reset = 1'b1;
+        @(posedge clock);
+        @(posedge clock);
+        
+        // Load program into instruction memory
+        load_program();
+        // Initialize data memory to zeros
+        clear_dmem();
+        
+        @(posedge clock);
+        @(posedge clock);
+        `SD;
+        // This reset is at an odd time to avoid the pos & neg clock edges
+        
+        reset = 1'b0;
+        $display("@@  %t  Deasserting System reset......\n@@\n@@", $realtime);
+    end
+
+    // Cycle counter
+    always @(posedge clock) begin
+        if(reset) begin
+            clock_count <= `SD 0;
+            instr_count <= `SD 0;
+        end else begin
+            clock_count <= `SD (clock_count + 1);
+            instr_count <= `SD (instr_count + pipeline_completed_insts);
+        end
+    end  
+    
+    // Branch prediction accuracy tracking logic
+    always @(posedge clock) begin
+        if (reset) begin
+            total_branches <= `SD 0;
+            correct_predictions <= `SD 0;
+            incorrect_predictions <= `SD 0;
+        end else begin
+            // Count resolved branches across all issue slots
+            for (int i = 0; i < `ISSUE_WIDTH; i++) begin
+                if (branch_resolved[i]) begin
+                    total_branches <= `SD total_branches + 1;
+                    
+                    // Check if prediction was correct
+                    if (branch_mispredicted[i]) begin
+                        incorrect_predictions <= `SD incorrect_predictions + 1;
+                        // Optional: Display misprediction information
+                        $display("@@  Cycle %0d: Branch misprediction detected (slot %0d)", 
+                                clock_count, i);
+                    end else begin
+                        correct_predictions <= `SD correct_predictions + 1;
+                    end
                 end
             end
         end
-//        if (prediction == 1'b1) begin
-//            $display("predicted taken");
-//        end
-    endtask
-
-endmodule
-
-// Instruction Memory
-module instr_mem(
-    input clk,
-    input [31:0] addr,
-    output reg [31:0] instruction
-);
-    reg [31:0] rom [0:65535];
-    
-    initial begin
-        // Initialize entire ROM to NOP (0x00000013)
-        for (integer i = 0; i <= 65535; i++) begin
-            rom[i] = 32'h00000013;
-        end
-        $readmemh("deep_nesting.hex", rom);
     end
     
-    always @(posedge clk) begin
-        instruction <= rom[addr[31:2]];
-    end
-endmodule
-
-// Data Memory
-module data_mem(
-    input clk,
-    input [31:0] addr,
-    input write_en,
-    input [31:0] write_data,
-    output reg [31:0] read_data
-);
-    reg [31:0] mem [0:65535];
-    
-    // Initialize all memory to zero
-    initial begin
-        for (integer i = 0; i <= 65535; i++) begin
-            mem[i] = 32'b0;
+    // Optional: Real-time branch prediction accuracy display
+    always @(posedge clock) begin
+        if (!reset && total_branches > 0 && (total_branches % 100 == 0)) begin
+            // Display accuracy every 100 branches
+            prediction_accuracy = (correct_predictions * 100.0) / total_branches;
+            $display("@@  Cycle %0d: Current BP Accuracy: %0.2f%% (%0d/%0d)", 
+                    clock_count, prediction_accuracy, correct_predictions, total_branches);
         end
     end
     
-    // Read path
-    always @(posedge clk) begin
-        read_data <= mem[addr[31:2]];
-    end
-    
-    // Write path
-    always @(posedge clk) begin
-        if (write_en) begin
-            mem[addr[31:2]] <= write_data;
+    // Timeout and termination logic
+    always @(negedge clock) begin
+        if(reset) begin
+            $display("@@\n@@  %t : System STILL at reset, can't show anything\n@@",
+                     $realtime);
+            debug_counter <= 0;
+        end else begin
+            `SD;
+            `SD;
+            
+            // Terminate simulation after timeout
+            if(pipeline_error_status != NO_ERROR || debug_counter > 50000000) begin
+                $display("@@@ Unified Memory contents hex on left, decimal on right: ");
+                show_mem_with_decimal(0,`MEM_64BIT_LINES - 1); 
+                // 8Bytes per line, 16kB total
+                
+                $display("@@  %t : System halted\n@@", $realtime);
+                
+                case(pipeline_error_status)
+                    LOAD_ACCESS_FAULT:  
+                        $display("@@@ System halted on memory error");
+                    HALTED_ON_WFI:          
+                        $display("@@@ System halted on WFI instruction");
+                    ILLEGAL_INST:
+                        $display("@@@ System halted on illegal instruction");
+                    default: 
+                        $display("@@@ System halted on unknown error code %x", 
+                            pipeline_error_status);
+                endcase
+                $display("@@@\n@@");
+
+                // Count the completed instr from the final cycle
+                instr_count = (instr_count + pipeline_completed_insts);
+                show_clk_count;
+                
+                // Display branch prediction accuracy statistics
+                show_bp_accuracy;
+                
+                #100 $finish;
+            end
+            debug_counter <= debug_counter + 1;
         end
-    end
-endmodule
+    end 
+
+endmodule  // module testbench

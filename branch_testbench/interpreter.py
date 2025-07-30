@@ -254,11 +254,16 @@ class RiscvAssembler:
                     if len(operands) != 2:
                         raise ValueError("JAL requires 2 operands")
                     rd = self._parse_reg(operands[0])
-                    label = operands[1]
+                    label_or_imm = operands[1]
                     
-                    if label not in self.symbol_table:
-                        raise ValueError(f"Undefined label: {label}")
-                    offset = self.symbol_table[label] - address
+                    if label_or_imm in self.symbol_table:
+                        offset = self.symbol_table[label_or_imm] - address
+                    else:
+                        try:
+                            offset = self._parse_imm(label_or_imm, 0)
+                        except ValueError:
+                            raise ValueError(f"Undefined label or invalid immediate: {label_or_imm}")
+
                     enc = encode_J(offset, rd, fmt_info[0])
                 elif fmt == 'U':
                     if len(operands) != 2:

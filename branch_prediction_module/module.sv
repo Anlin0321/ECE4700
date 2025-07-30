@@ -6,7 +6,7 @@ module branch_predictor (
     input wire branch_taken_actual,
     input wire is_branch_actual,
     output wire prediction,
-    output wire new_PC
+    output wire is_branch_predicted
 );
 
     // Instruction type decoding
@@ -14,16 +14,8 @@ module branch_predictor (
     wire is_branch_inst = (opcode == 7'b1100011); 
     wire is_jal_inst = (opcode == 7'b1101111);
     wire is_jalr_inst = (opcode == 7'b1100111);
-
-    // Immediate field extraction (similar to decoder module)
-    wire [31:0] jal_imm = {{12{instruction[31]}}, instruction[19:12], instruction[20], instruction[30:21], 1'b0};
-    wire [31:0] branch_imm = {{20{instruction[31]}}, instruction[7], instruction[30:25], instruction[11:8], 1'b0};
-    wire [31:0] jalr_imm = {{20{instruction[31]}}, instruction[31:20]};
     
-    // Calculate target addresses
-    wire [31:0] jal_target = pc + jal_imm;
-    wire [31:0] branch_target = pc + branch_imm;
-    wire [31:0] jalr_target_base = (pc + jalr_imm) & ~32'h1; // Clear LSB for alignment
+    assign is_branch_predicted = is_branch_inst | is_jal_inst | is_jalr_inst;
     
     // Unconditional branches always taken
     wire unconditional_taken = is_jal_inst | is_jalr_inst;
@@ -58,29 +50,8 @@ module branch_predictor (
     assign raw_prediction = unconditional_taken ? 1'b1 :
                              (use_loop_pred ? loop_prediction : tage_prediction);
     
-    assign prediction = !raw_prediction;
-    // New PC calculation
-    reg [31:0] predicted_target;
-    always_comb begin
-        if (is_jal_inst) begin
-            predicted_target = jal_target;
-        end else if (is_jalr_inst) begin
-            // For JALR, we need RS1 value which we don't have here
-            // In a real implementation, this would come from register file
-            // For prediction purposes, we'll just use the base address
-            predicted_target = jalr_target_base;
-        end else if (is_branch_inst) begin
-            predicted_target = branch_target;
-        end else begin
-            predicted_target = pc + 4; // Default to next instruction
-        end
-    end
-    
-    // Select new PC based on prediction
-    assign new_PC = (prediction && (is_branch_inst || is_jal_inst || is_jalr_inst)) ? 
-                    predicted_target : 
-                    pc + 4;
-
+//    assign prediction = raw_prediction;
+        assign prediction = 1'b1;
 endmodule
 
 module tage_predictor #(

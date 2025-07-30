@@ -39,7 +39,6 @@ def main():
     previousDest = -1
     hazardFlag = (random.random() <= hazard)
     loop_id_counter = 0
-    short_branch_id_counter = 0 # Counter for unique labels for short branches
 
     # Available registers excluding x0 and x3 (reserved for memory base)
     available_regs = [i for i in range(1, regnum) if i != 3]
@@ -55,69 +54,66 @@ def main():
         while i < codelen:
             current_depth = len(loop_stack)
 
-            # --- LOGIC: Decide whether to close a loop, start a new one, or generate a regular instruction ---
-
-            # 1. Check if we should CLOSE the innermost loop.
-            if loop_stack and random.random() < loop_exit_prob and i < (codelen - 3):
-                depth, loop_id, counter_reg, break_reg, index_reg, start_label, exit_label = loop_stack.pop()
+            # 1. Check if we should CLOSE the innermost loop
+            # Ensure there's enough space for the loop footer instructions
+            if loop_stack and random.random() < loop_exit_prob and i < (codelen - 5):
+                depth, loop_id, counter_reg, break_reg, index_reg, start_label, end_label = loop_stack.pop()
                 
-                # Generate the loop footer, which contains the actual loop-back logic
+                # Generate the loop footer using labels
                 loop_footer = [
                     f"\n# --- Closing Loop {loop_id} (Depth: {depth}) ---",
                     f"addi x{index_reg}, x{index_reg}, 1",
-                    # CORRECTED: Branch to the specific loop's exit label instead of a fixed offset.
-                    f"beq x{index_reg}, x{break_reg}, {exit_label}  # Conditional break from loop",
-                    f"blt x{index_reg}, x{counter_reg}, {start_label} # Branch back to loop start",
-                    f"{exit_label}: # Define loop exit label",
-                    f"# --- Resuming code after Loop {loop_id} ---\n"
+                    f"beq x{index_reg}, x{break_reg}, {end_label}  # Conditional break from loop",
+                    f"bge x{index_reg}, x{counter_reg}, {end_label} # Main loop exit condition",
+                    f"j {start_label} # Jump back to loop start",
+                    f"{end_label}: # --- Resuming code after Loop {loop_id} ---"
                 ]
-                f.write("\n".join(loop_footer) + "\n")
-                i += 3  # Account for the 3 instructions in the footer
+                f.write("\n".join(loop_footer) + "\n\n")
+                i += 4  # Account for instructions in footer
                 continue
 
-            # 2. Check if we should START a new loop.
+            # 2. Check if we should START a new loop
             loop_prob = loop_insert_prob * (1 - current_depth / max_loop_depth) if max_loop_depth > 0 else 0
-            if current_depth < max_loop_depth and random.random() < loop_prob:
-                # Check if we have enough registers for a new loop
-                if len(available_regs) < 3:
-                    pass
-                else:
-                    loop_id_counter += 1
-                    new_loop_id = loop_id_counter
-                    target = random.randint(1, 5)
-                    max_iter = random.randint(target + 1, 10)
-                    
-                    # Select registers, ensuring they don't conflict with the previous instruction's destination
+            if current_depth < max_loop_depth and random.random() < loop_prob and len(available_regs) >= 3:
+                loop_id_counter += 1
+                new_loop_id = loop_id_counter
+                target = random.randint(1, 5)
+                max_iter = random.randint(target + 1, 10)
+                
+                # Define unique labels for the new loop
+                start_label = f"loop_start_{new_loop_id}"
+                end_label = f"loop_end_{new_loop_id}"
+
+                # Select registers, ensuring no conflicts with previous instruction
+                loop_regs = random.sample(available_regs, 3)
+                while previousDest in loop_regs:
                     loop_regs = random.sample(available_regs, 3)
-                    while previousDest in loop_regs:
-                        loop_regs = random.sample(available_regs, 3)
-                    
-                    counter_reg, break_reg, index_reg = loop_regs
-                    start_label = f"loop_start_{new_loop_id}"
-                    exit_label = f"loop_exit_{new_loop_id}"
+                
+                counter_reg, break_reg, index_reg = loop_regs
 
-                    # Push new loop context to the stack
-                    loop_stack.append((current_depth + 1, new_loop_id, counter_reg, break_reg, index_reg, start_label, exit_label))
+                # Push new loop context to stack, now including labels
+                loop_stack.append((current_depth + 1, new_loop_id, counter_reg, break_reg, index_reg, start_label, end_label))
 
-                    # Generate loop header
-                    loop_header = [
-                        f"\n# --- Starting Loop {new_loop_id} (Depth: {current_depth + 1}, break at {target}, max {max_iter}) ---",
-                        f"addi x{counter_reg}, x0, {max_iter}",
-                        f"addi x{break_reg}, x0, {target}",
-                        f"addi x{index_reg}, x0, 0",
-                        f"{start_label}:"
-                    ]
-                    f.write("\n".join(loop_header) + "\n")
-                    i += 3  # Account for 3 instructions in the header
-                    
-                    # Update hazard tracking
-                    previousDest = index_reg
-                    hazardFlag = (random.random() <= hazard)
-                    continue
+                # Generate loop header and the start label
+                loop_header = [
+                    f"\n# --- Starting Loop {new_loop_id} (Depth: {current_depth + 1}, break at {target}, max {max_iter}) ---",
+                    f"addi x{counter_reg}, x0, {max_iter}",
+                    f"addi x{break_reg}, x0, {target}",
+                    f"addi x{index_reg}, x0, 0",
+                    f"{start_label}: # Loop body start"
+                ]
+                f.write("\n".join(loop_header) + "\n")
+                i += 3  # Account for 3 instructions in header
+                
+                # Update hazard tracking
+                previousDest = index_reg
+                hazardFlag = (random.random() <= hazard)
+                continue
 
-            # 3. If we didn't start or close a loop, generate a REGULAR instruction.
+            # 3. Generate REGULAR instruction
             instType = random.choices(instTypeSet, weights=weights, k=1)[0]
             inst = ""
+            extra_inst = 0
 
             match instType:
                 case "alu":
@@ -128,9 +124,8 @@ def main():
                         src1_reg = previousDest
                         src2_reg = random.choice([r for r in available_regs if r != dest_reg])
                     else:
-                        # Avoid using previousDest as a source to prevent a hazard
-                        src1_reg = random.choice([r for r in available_regs if r not in [dest_reg, previousDest]])
-                        src2_reg = random.choice([r for r in available_regs if r not in [dest_reg, previousDest]])
+                        src1_reg = random.choice([r for r in available_regs if r != dest_reg])
+                        src2_reg = random.choice([r for r in available_regs if r not in [dest_reg, src1_reg]])
 
                     inst = f"{op} x{dest_reg}, x{src1_reg}, x{src2_reg}"
                     previousDest = dest_reg
@@ -139,8 +134,7 @@ def main():
                 case "load":
                     dest_reg = random.choice(available_regs)
                     if not hazardFlag and dest_reg == previousDest:
-                         # If no hazard is intended, ensure dest_reg is not the same as previousDest
-                         dest_reg = random.choice([r for r in available_regs if r != previousDest])
+                        dest_reg = random.choice([r for r in available_regs if r != previousDest])
 
                     mem_offset = 4 * random.randint(0, 250)
                     inst = f"lw x{dest_reg}, {mem_offset}(x3)"
@@ -156,49 +150,40 @@ def main():
                         
                     mem_offset = 4 * random.randint(0, 250)
                     inst = f"sw x{src_reg}, {mem_offset}(x3)"
-                    # Store instructions do not write to a register, so they can't cause a RAW hazard
                     hazardFlag = False
                     previousDest = -1
 
                 case "takenBranch":
-                    # CORRECTED: Use a label for the branch target instead of a fixed offset.
-                    short_branch_id_counter += 1
-                    label = f"skip_taken_{short_branch_id_counter}"
-                    inst = f"beq x0, x0, {label} # Always branch\n"
-                    inst += f"addi x0, x0, 0  # This instruction is skipped\n"
-                    inst += f"{label}:"
-                    i += 1 # This generates two instruction words
+                    inst = "beq x0, x0, 8 # Always branch\n"
+                    inst += "nop # Skipped instruction\n"
+                    inst += "nop # Target of the branch"
+                    extra_inst = 2
 
                 case "unTakenBranch":
-                    # CORRECTED: Use a label for the branch target.
-                    short_branch_id_counter += 1
-                    label = f"skip_nottaken_{short_branch_id_counter}"
-                    inst = f"bne x0, x0, {label} # Never branch\n"
-                    inst += f"addi x0, x0, 0  # This instruction is executed\n"
-                    inst += f"{label}:"
-                    i += 1 # This generates two instruction words
+                    inst = "bne x0, x0, 8 # Never branch\n"
+                    inst += "nop # Executed instruction"
+                    extra_inst = 1
 
             f.write(inst + "\n")
-            i += 1
+            i += 1 + extra_inst
 
-        # Close any remaining open loops at the end of the file
+        # Close any remaining open loops using labels
         f.write("\n# --- Final cleanup: Closing all remaining open loops ---\n")
         while loop_stack:
-            depth, loop_id, counter_reg, break_reg, index_reg, start_label, exit_label = loop_stack.pop()
+            depth, loop_id, counter_reg, break_reg, index_reg, start_label, end_label = loop_stack.pop()
             loop_footer = [
                 f"\n# Closing remaining Loop {loop_id}",
                 f"addi x{index_reg}, x{index_reg}, 1",
-                # CORRECTED: Branch to the specific loop's exit label.
-                f"beq x{index_reg}, x{break_reg}, {exit_label}",
-                f"blt x{index_reg}, x{counter_reg}, {start_label}",
-                f"{exit_label}:"
+                f"beq x{index_reg}, x{break_reg}, {end_label}",
+                f"bge x{index_reg}, x{counter_reg}, {end_label}",
+                f"j {start_label}",
+                f"{end_label}: # Loop exit"
             ]
             f.write("\n".join(loop_footer) + "\n")
 
         # Proper exit sequence
         f.write("\n# Program exit\n")
-        f.write("addi x0, x0, 0   # Set exit code to 0\n")
-        f.write("addi x0, x0, 93  # Exit syscall number\n")
+        f.write("li x7, 93 # ecall: exit\n")
         f.write("ecall\n")
 
 if __name__ == "__main__":
